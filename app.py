@@ -123,15 +123,6 @@ st.markdown(
     .alert-amanha { background: #EFF6FF; border-left: 5px solid #3B82F6; color: #1E40AF; }
     .alert-pagas { background: #ECFDF5; border-left: 5px solid #10B981; color: #065F46; }
 
-    /* Painel de Filtros */
-    .filtro-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 14px 18px 6px 18px;
-        margin-bottom: 15px;
-    }
-
     div[data-testid="stDataEditor"] {
         background: #ffffff;
         border-radius: 12px;
@@ -167,48 +158,7 @@ def init_db():
         )
     """
     )
-
-    c.execute("PRAGMA table_info(contas)")
-    colunas_existentes = [col[1] for col in c.fetchall()]
-
-    if "mes_ano" not in colunas_existentes:
-        c.execute("ALTER TABLE contas ADD COLUMN mes_ano TEXT DEFAULT '11/2026'")
-    if "limite_disponivel" not in colunas_existentes:
-        c.execute("ALTER TABLE contas ADD COLUMN limite_disponivel REAL DEFAULT 0.0")
-
-    c.execute("SELECT COUNT(*) FROM contas")
-    if c.fetchone()[0] == 0:
-        mes_atual = "11/2026"
-        venc_padrao = "2026-11-20"
-        dados_iniciais = [
-            (mes_atual, "Aluguel", "Moradia", 1390.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Água e luz", "Moradia", 256.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Faculdade", "Educação", 665.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Mãe", "Família / Ajuda", 50.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Atrasados", "Dívidas / Pendências", 240.0, 0.0, venc_padrao, "Atrasado", "Variável"),
-            (mes_atual, "Shopee", "Compras", 536.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Nubank", "Cartão de Crédito", 1374.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Neon", "Cartão de Crédito", 2134.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Digio", "Cartão de Crédito", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bmg", "Cartão de Crédito", 720.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bv", "Cartão de Crédito", 507.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Dm", "Outros", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Recarga pay", "Serviços", 136.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Mercado pago", "Cartão de Crédito", 540.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Santander", "Cartão de Crédito", 830.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Caixa", "Cartão de Crédito", 1284.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bb", "Cartão de Crédito", 5000.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Moto", "Transporte", 400.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Brasil card", "Cartão de Crédito", 1575.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        ]
-        c.executemany(
-            """
-            INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            dados_iniciais,
-        )
-        conn.commit()
+    conn.commit()
     conn.close()
 
 
@@ -221,12 +171,12 @@ def load_all_data():
     return df
 
 
-def update_db_filtered(df_editado_completo, mes_selecionado):
+def update_db_filtered(df_completo_atualizado, mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
 
-    df_save = df_editado_completo.copy()
+    df_save = df_completo_atualizado.copy()
     df_save["mes_ano"] = mes_selecionado
     df_save["vencimento"] = df_save["vencimento"].astype(str)
 
@@ -246,6 +196,35 @@ def insert_conta(mes_ano, descricao, categoria, valor, limite, vencimento, statu
     """,
         (mes_ano, descricao, categoria, valor, limite, str(vencimento), status, tipo),
     )
+    conn.commit()
+    conn.close()
+
+
+def remover_duplicadas_automatico(mes_selecionado):
+    """Remove automaticamente registros repetidos deixando apenas 1 de cada conta por descrição."""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        """
+        DELETE FROM contas
+        WHERE mes_ano = ?
+        AND id NOT IN (
+            SELECT MIN(id)
+            FROM contas
+            WHERE mes_ano = ?
+            GROUP BY TRIM(LOWER(descricao))
+        )
+    """,
+        (mes_selecionado, mes_selecionado),
+    )
+    conn.commit()
+    conn.close()
+
+
+def excluir_contas_por_id(ids_para_excluir):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.executemany("DELETE FROM contas WHERE id = ?", [(int(i),) for i in ids_para_excluir])
     conn.commit()
     conn.close()
 
@@ -316,7 +295,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # -------------------------------------------------------------
-# BARRA LATERAL (MENU LEVE COM EXPANDER)
+# BARRA LATERAL (MENU LEVE COM EXPANDER E FERRAMENTAS)
 # -------------------------------------------------------------
 hoje = date.today()
 amanha = hoje + timedelta(days=1)
@@ -389,6 +368,14 @@ with st.sidebar:
                     st.error("Preencha a descrição da conta.")
 
     st.divider()
+
+    # FERRAMENTA DE LIMPEZA AUTOMÁTICA DE DUPLICADAS
+    st.markdown("#### ⚙️ Manutenção de Contas")
+    if st.button("🧹 Limpar Contas Duplicadas", use_container_width=True, help="Remove todas as repetições e deixa apenas 1 conta de cada nome."):
+        remover_duplicadas_automatico(mes_selecionado)
+        st.toast("Contas duplicadas excluídas com sucesso!", icon="✨")
+        st.rerun()
+
     if mes_selecionado == "12/2026":
         if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
             clonar_fixos("11/2026", "12/2026")
@@ -426,7 +413,7 @@ st.markdown(
     f"""
     <div class="header-banner">
         <div class="header-title">Ray & Yure | Painel de {nome_mes} ✨</div>
-        <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento do mês.</div>
+        <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento do mês. ({len(df_mes)} contas cadastradas)</div>
         <div class="limite-badge">💳 Limite Disponível Total em Cartões: R$ {total_limite_cartoes:,.2f}</div>
     </div>
     """,
@@ -603,10 +590,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA DE CONTAS COM FILTROS EM CADA COLUNA
+# TABELA DE CONTAS COM FILTROS E EXCLUSÃO SELETIVA
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Use os filtros abaixo para encontrar despesas específicas por categoria, status, tipo ou descrição.")
+st.caption("Filtre o que quiser ver. Para excluir contas indesejadas, marque a caixa **'Excluir?'** e clique no botão vermelho de exclusão.")
 
 # Painel de Filtros Rápidos
 with st.container():
@@ -631,6 +618,8 @@ with st.container():
 df_tabela_filtrada = df_mes.copy() if not df_mes.empty else pd.DataFrame()
 
 if not df_tabela_filtrada.empty:
+    df_tabela_filtrada["Excluir?"] = False
+
     if filtro_tabela_cat != "Todas":
         df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["categoria"] == filtro_tabela_cat]
     if filtro_tabela_status != "Todos":
@@ -641,6 +630,7 @@ if not df_tabela_filtrada.empty:
         df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
 colunas_config = {
+    "Excluir?": st.column_config.CheckboxColumn("Excluir?", default=False),
     "id": st.column_config.NumberColumn("ID", disabled=True),
     "mes_ano": st.column_config.TextColumn("Mês/Ano", disabled=True),
     "descricao": st.column_config.TextColumn("Descrição", required=True),
@@ -675,32 +665,51 @@ colunas_config = {
     ),
 }
 
+# Ordem de colunas colocando a opção de excluir no começo
+colunas_ordem = ["Excluir?", "id", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+colunas_exibir = [c for c in colunas_ordem if c in df_tabela_filtrada.columns]
+
 df_editado_filtrado = st.data_editor(
-    df_tabela_filtrada,
+    df_tabela_filtrada[colunas_exibir],
     column_config=colunas_config,
     use_container_width=True,
     num_rows="dynamic",
     key=f"tabela_{mes_selecionado}_{filtro_tabela_cat}_{filtro_tabela_status}_{filtro_tabela_tipo}_{busca_texto}",
 )
 
-if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-    # Mescla com segurança o que foi editado no conjunto geral do mês
-    df_final_salvar = df_mes.copy()
-    if not df_editado_filtrado.empty:
-        # Se algum id existente foi atualizado
-        for _, row in df_editado_filtrado.iterrows():
-            if pd.notna(row.get("id")):
-                idx = df_final_salvar[df_final_salvar["id"] == row["id"]].index
-                if len(idx) > 0:
-                    for col in ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]:
-                        df_final_salvar.loc[idx, col] = row[col]
+btn_c1, btn_c2 = st.columns([2, 1])
+
+with btn_c1:
+    if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
+        df_final_salvar = df_mes.copy()
+        if not df_editado_filtrado.empty:
+            for _, row in df_editado_filtrado.iterrows():
+                if pd.notna(row.get("id")):
+                    idx = df_final_salvar[df_final_salvar["id"] == row["id"]].index
+                    if len(idx) > 0:
+                        for col in ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]:
+                            df_final_salvar.loc[idx, col] = row[col]
+                else:
+                    # Nova linha adicionada manualmente
+                    nova_linha = row.drop(labels=["Excluir?"], errors="ignore")
+                    nova_linha["mes_ano"] = mes_selecionado
+                    df_final_salvar = pd.concat([df_final_salvar, pd.DataFrame([nova_linha])], ignore_index=True)
+
+        update_db_filtered(df_final_salvar, mes_selecionado)
+        st.toast("Alterações salvas com sucesso!", icon="✅")
+        st.rerun()
+
+with btn_c2:
+    if st.button("🗑️ Excluir Selecionadas", use_container_width=True):
+        if not df_editado_filtrado.empty and "Excluir?" in df_editado_filtrado.columns:
+            marcadas_para_excluir = df_editado_filtrado[df_editado_filtrado["Excluir?"] == True]
+            if not marcadas_para_excluir.empty:
+                ids = marcadas_para_excluir["id"].dropna().tolist()
+                excluir_contas_por_id(ids)
+                st.toast(f"{len(ids)} conta(s) excluída(s)!", icon="🗑️")
+                st.rerun()
             else:
-                # Nova linha adicionada na visão filtrada
-                df_final_salvar = pd.concat([df_final_salvar, pd.DataFrame([row])], ignore_index=True)
-                
-    update_db_filtered(df_final_salvar, mes_selecionado)
-    st.toast("Alterações salvas com sucesso no banco de dados!", icon="✅")
-    st.rerun()
+                st.warning("Marque a caixa 'Excluir?' das contas que deseja apagar.")
 
 # Realce visual direto: contas com status "Pago" ficam verdes
 if not df_mes.empty and (df_mes["status"] == "Pago").any():
