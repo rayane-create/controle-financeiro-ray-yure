@@ -216,11 +216,11 @@ def update_db(df_atualizado, mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
-    
+
     df_save = df_atualizado.copy()
     df_save["mes_ano"] = mes_selecionado
     df_save["vencimento"] = df_save["vencimento"].astype(str)
-    
+
     colunas_salvar = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
     df_save[colunas_salvar].to_sql("contas", conn, if_exists="append", index=False)
     conn.commit()
@@ -246,12 +246,12 @@ def clonar_fixos(mes_origem, mes_destino):
     c = conn.cursor()
     c.execute("SELECT descricao, categoria, valor, limite_disponivel, tipo FROM contas WHERE mes_ano = ? AND tipo = 'Fixo'", (mes_origem,))
     fixos = c.fetchall()
-    
+
     hoje = date.today().strftime("%Y-%m-%d")
     novos = []
     for f in fixos:
         novos.append((mes_destino, f[0], f[1], f[2], f[3], hoje, "Aguardando Pagamento", f[4]))
-    
+
     c.executemany(
         """
         INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
@@ -346,7 +346,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Opção Nova Despesa em formato abre e fecha (Expander)
     with st.expander("➕ Nova Despesa (Clique para abrir)", expanded=False):
         with st.form("form_nova_conta", clear_on_submit=True):
             nova_desc = st.text_input("Descrição (Ex: Cartão X, Mercado)")
@@ -595,10 +594,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA INTERATIVA (COM REALCE VERDE POR DISPONIBILIDADE)
+# TABELA DE CONTAS (COM LINHA VERDE NAS CONTAS PAGAS)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Altere dados ou o Limite Disponível nas células e clique em Salvar Alterações.")
+st.caption("Edite os dados, preencha o Limite Disponível e selecione o status. Contas marcadas como **Pago** ficam destacadas em verde.")
 
 colunas_config = {
     "id": st.column_config.NumberColumn("ID", disabled=True),
@@ -645,78 +644,79 @@ df_editado = st.data_editor(
 
 if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
     update_db(df_editado, mes_selecionado)
-    st.toast("Contas e alterações salvas com sucesso!", icon="✅")
+    st.toast("Contas salvas com sucesso!", icon="✅")
     st.rerun()
 
-# Visão colorida com realce de saldo
-if saldo_conta > 0 and not df_mes.empty:
-    with st.expander("👀 Ver Cobertura Visual de Contas (Realce de Saldo)", expanded=False):
-        st.caption("Em verde: contas individuais cujo valor cabe dentro do seu saldo informado.")
-        
-        def highlight_cobertura(row):
-            if row["valor"] <= saldo_conta:
-                return ["background-color: #DCFCE7; color: #166534; font-weight: 600;"] * len(row)
-            return [""] * len(row)
-        
-        df_display = df_mes[["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status"]].copy()
-        df_styled = df_display.style.apply(highlight_cobertura, axis=1).format({
-            "valor": "R$ {:,.2f}",
-            "limite_disponivel": "R$ {:,.2f}",
-        })
-        st.dataframe(df_styled, use_container_width=True)
+# Realce visual direto: contas com status "Pago" ficam verdes
+if not df_mes.empty and (df_mes["status"] == "Pago").any():
+    def highlight_pagos(row):
+        if row["status"] == "Pago":
+            return ["background-color: #DCFCE7; color: #166534; font-weight: 600;"] * len(row)
+        return [""] * len(row)
+
+    cols_view = ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+    df_pagos_view = df_mes[cols_view].style.apply(highlight_pagos, axis=1).format({
+        "valor": "R$ {:,.2f}",
+        "limite_disponivel": "R$ {:,.2f}",
+    })
+    st.caption("Visão com destaque verde nas contas que já foram pagas:")
+    st.dataframe(df_pagos_view, use_container_width=True)
 
 # -------------------------------------------------------------
-# CALCULADORA / SIMULADOR DE GASTOS (ABRE E FECHA APÓS A TABELA)
+# CALCULADORA / SIMULADOR COM "SELECIONAR TODAS"
 # -------------------------------------------------------------
 st.write("")
 with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para simular)", expanded=False):
-    st.markdown("Selecione quais contas deseja simular quitar para verificar o impacto instantâneo no seu saldo.")
-    
+    st.markdown("Filtre por categoria e use o botão de **Selecionar Todas** para calcular o valor total rapidamente sem clicar uma a uma.")
+
     if not df_mes.empty:
-        # Filtro opcional por categoria
         todas_cats = ["Todas"] + sorted(list(df_mes["categoria"].unique()))
-        filtro_cat = st.selectbox("Filtrar por Categoria na Simulação:", todas_cats)
-        
+        filtro_cat = st.selectbox("Filtrar por Categoria:", todas_cats)
+
         df_simulacao = df_mes.copy()
         if filtro_cat != "Todas":
             df_simulacao = df_simulacao[df_simulacao["categoria"] == filtro_cat]
-        
-        # Coluna booleana para marcar
-        df_simulacao["Simular Pagamento"] = False
-        
+
+        # Botão/Checkbox para Marcar ou Desmarcar Todas
+        c_sel1, c_sel2 = st.columns([1.5, 3])
+        with c_sel1:
+            marcar_todas = st.checkbox("☑️ Selecionar Todas da Seleção", value=False, key="check_todas")
+
+        df_simulacao["Pagar?"] = marcar_todas
+
         sim_col_config = {
-            "Simular Pagamento": st.column_config.CheckboxColumn("Pagar?", default=False),
+            "Pagar?": st.column_config.CheckboxColumn("Pagar?", default=marcar_todas),
             "descricao": st.column_config.TextColumn("Descrição", disabled=True),
             "categoria": st.column_config.TextColumn("Categoria", disabled=True),
             "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", disabled=True),
-            "status": st.column_config.TextColumn("Status Atual", disabled=True),
+            "status": st.column_config.TextColumn("Status", disabled=True),
         }
-        
+
         tabela_sim = st.data_editor(
-            df_simulacao[["Simular Pagamento", "descricao", "categoria", "valor", "status"]],
+            df_simulacao[["Pagar?", "descricao", "categoria", "valor", "status"]],
             column_config=sim_col_config,
             use_container_width=True,
             disabled=["descricao", "categoria", "valor", "status"],
-            key="tabela_simulador",
+            key=f"tabela_simulador_{marcar_todas}_{filtro_cat}",
         )
-        
-        selecionados = tabela_sim[tabela_sim["Simular Pagamento"] == True]
+
+        selecionados = tabela_sim[tabela_sim["Pagar?"] == True]
         total_selecionado = selecionados["valor"].sum()
         sobra_simulada = saldo_conta - total_selecionado
-        
+
         st.markdown("---")
         sc1, sc2, sc3 = st.columns(3)
         sc1.metric("Contas Selecionadas", f"{len(selecionados)} conta(s)")
-        sc2.metric("Total a Desembolsar", f"R$ {total_selecionado:,.2f}")
-        
+        sc2.metric("Total da Simulação", f"R$ {total_selecionado:,.2f}")
+
         if saldo_conta > 0:
             sc3.metric(
-                "Saldo Restante Após Pagamento",
+                "Saldo Restante Após Quitação",
                 f"R$ {sobra_simulada:,.2f}",
                 delta=f"{'Sobra' if sobra_simulada >= 0 else 'Falta'} R$ {abs(sobra_simulada):,.2f}",
                 delta_color="normal" if sobra_simulada >= 0 else "inverse"
             )
         else:
-            sc3.info("Insira o Saldo na barra lateral para ver o impacto.")
+            sc3.info("Informe o Saldo em Conta na lateral para ver o impacto.")
     else:
-        st.info("Nenhuma conta registrada neste mês para simular.")
+        st.info("Nenhuma conta registrada para este mês.")
