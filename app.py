@@ -22,6 +22,7 @@ st.markdown(
         font-family: 'Inter', -apple-system, sans-serif;
     }
 
+    /* Menu Lateral Leve */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%) !important;
         border-right: 1px solid #CBD5E1;
@@ -44,6 +45,7 @@ st.markdown(
         border-radius: 8px;
     }
 
+    /* Top Banner Original */
     .header-banner {
         background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
@@ -55,6 +57,7 @@ st.markdown(
     .header-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
     .header-subtitle { font-size: 0.95rem; opacity: 0.9; }
 
+    /* Badge discreto de limite */
     .limite-badge {
         display: inline-block;
         background: rgba(255, 255, 255, 0.2);
@@ -67,6 +70,7 @@ st.markdown(
         border: 1px solid rgba(255, 255, 255, 0.3);
     }
 
+    /* Cards de Métricas */
     .metric-box {
         background-color: #ffffff;
         border-radius: 14px;
@@ -106,6 +110,7 @@ st.markdown(
     .card-saldo-neg .metric-title { color: #DC2626; }
     .card-saldo-neg .metric-val { color: #B91C1C; }
 
+    /* Alertas de Vencimento */
     .alert-card {
         border-radius: 12px;
         padding: 14px 16px;
@@ -130,7 +135,7 @@ st.markdown(
 )
 
 # -------------------------------------------------------------
-# BANCO DE DADOS
+# BANCO DE DADOS PERSISTENTE (SQLite)
 # -------------------------------------------------------------
 DB_NAME = "contas.db"
 
@@ -190,36 +195,40 @@ def init_db():
     conn.close()
 
 
-def load_all_data():
+def load_mes_data(mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT * FROM contas", conn)
+    df = pd.read_sql_query(
+        """
+        SELECT descricao, categoria, valor, limite_disponivel, vencimento, status, tipo 
+        FROM contas 
+        WHERE mes_ano = ? 
+        ORDER BY vencimento ASC, id ASC
+        """,
+        conn,
+        params=(mes_selecionado,),
+    )
     conn.close()
     if not df.empty:
         df["vencimento"] = pd.to_datetime(df["vencimento"]).dt.date
     return df
 
 
-def resetar_e_limpar_duplicadas():
-    """Elimina toda a duplicação e restaura as 19 contas originais."""
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("DROP TABLE IF EXISTS contas")
-    conn.commit()
-    conn.close()
-    init_db()
-
-
-def update_db_filtered(df_completo_atualizado, mes_selecionado):
+def save_mes_data(df_editado, mes_selecionado):
+    """Substitui com exatidão as contas do mês atual, sem duplicar."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
 
-    df_save = df_completo_atualizado.copy()
+    df_save = df_editado.copy()
+    # Remove colunas auxiliares como 'Excluir?' se houver
+    if "Excluir?" in df_save.columns:
+        df_save = df_save[df_save["Excluir?"] != True].drop(columns=["Excluir?"])
+
     df_save["mes_ano"] = mes_selecionado
     df_save["vencimento"] = df_save["vencimento"].astype(str)
 
-    colunas_salvar = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
-    df_save[colunas_salvar].to_sql("contas", conn, if_exists="append", index=False)
+    colunas = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+    df_save[colunas].to_sql("contas", conn, if_exists="append", index=False)
     conn.commit()
     conn.close()
 
@@ -238,10 +247,31 @@ def insert_conta(mes_ano, descricao, categoria, valor, limite, vencimento, statu
     conn.close()
 
 
-def excluir_contas_por_id(ids_para_excluir):
+def clonar_fixos(mes_origem, mes_destino):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.executemany("DELETE FROM contas WHERE id = ?", [(int(i),) for i in ids_para_excluir])
+    c.execute(
+        """
+        SELECT descricao, categoria, valor, limite_disponivel, tipo 
+        FROM contas 
+        WHERE mes_ano = ? AND tipo = 'Fixo'
+        """,
+        (mes_origem,),
+    )
+    fixos = c.fetchall()
+
+    hoje = date.today().strftime("%Y-%m-%d")
+    novos = []
+    for f in fixos:
+        novos.append((mes_destino, f[0], f[1], f[2], f[3], hoje, "Aguardando Pagamento", f[4]))
+
+    c.executemany(
+        """
+        INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        novos,
+    )
     conn.commit()
     conn.close()
 
@@ -249,7 +279,7 @@ def excluir_contas_por_id(ids_para_excluir):
 init_db()
 
 # -------------------------------------------------------------
-# LOGIN
+# LOGIN & AUTENTICAÇÃO
 # -------------------------------------------------------------
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -280,7 +310,7 @@ def tela_login():
                 st.session_state.autenticado = True
                 st.rerun()
             else:
-                st.error("Credenciais inválidas.")
+                st.error("Credenciais inválidas. Verifique o e-mail ou a senha digitada.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -290,7 +320,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # -------------------------------------------------------------
-# BARRA LATERAL
+# BARRA LATERAL (MENU LEVE COM EXPANDER)
 # -------------------------------------------------------------
 hoje = date.today()
 amanha = hoje + timedelta(days=1)
@@ -320,17 +350,18 @@ with st.sidebar:
     st.write("")
     st.subheader("💵 Disponibilidade")
     saldo_conta = st.number_input(
-        f"Saldo em Conta ({mes_selecionado}):",
+        f"Saldo em Conta / Receita ({mes_selecionado}):",
         min_value=0.0,
         value=0.0,
         step=100.0,
+        help="Informe o valor que você tem em conta disponível para esse mês.",
     )
 
     st.divider()
 
-    with st.expander("➕ Nova Despesa", expanded=False):
+    with st.expander("➕ Nova Despesa (Clique para abrir)", expanded=False):
         with st.form("form_nova_conta", clear_on_submit=True):
-            nova_desc = st.text_input("Descrição")
+            nova_desc = st.text_input("Descrição (Ex: Cartão X, Mercado)")
             nova_cat = st.selectbox(
                 "Categoria",
                 [
@@ -352,31 +383,30 @@ with st.sidebar:
             novo_status = st.selectbox("Status", ["Aguardando Pagamento", "Pago", "Atrasado"])
             novo_tipo = st.selectbox("Tipo", ["Cartão", "Fixo", "Variável", "Emergência"])
 
-            submit = st.form_submit_button("Cadastrar", use_container_width=True)
+            submit = st.form_submit_button("Cadastrar Despesa", use_container_width=True)
             if submit:
                 if nova_desc.strip():
                     insert_conta(mes_selecionado, nova_desc, nova_cat, novo_valor, novo_limite, novo_venc, novo_status, novo_tipo)
-                    st.success("Conta adicionada!")
+                    st.success(f"Conta inserida em {mes_selecionado}!")
                     st.rerun()
+                else:
+                    st.error("Preencha a descrição da conta.")
 
     st.divider()
-
-    st.markdown("#### ⚙️ Manutenção de Contas")
-    if st.button("🚨 Resetar e Limpar Todas as Duplicadas", type="primary", use_container_width=True):
-        resetar_e_limpar_duplicadas()
-        st.cache_data.clear()
-        st.success("Tudo limpo! Voltámos às 19 contas originais.")
-        st.rerun()
+    if mes_selecionado == "12/2026":
+        if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
+            clonar_fixos("11/2026", "12/2026")
+            st.success("Custos fixos copiados para Dezembro!")
+            st.rerun()
 
     if st.button("🚪 Sair do Painel", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
 
 # -------------------------------------------------------------
-# CÁLCULOS
+# CARREGAMENTO DOS DADOS DO MÊS
 # -------------------------------------------------------------
-df_todos = load_all_data()
-df_mes = df_todos[df_todos["mes_ano"] == mes_selecionado].copy() if not df_todos.empty else pd.DataFrame()
+df_mes = load_mes_data(mes_selecionado)
 
 total_deve = float(df_mes["valor"].sum()) if not df_mes.empty else 0.0
 total_pago = float(df_mes[df_mes["status"] == "Pago"]["valor"].sum()) if not df_mes.empty else 0.0
@@ -393,18 +423,20 @@ if not df_mes.empty:
 else:
     contas_pendentes = contas_vencidas = contas_hoje = contas_amanha = contas_pagas = pd.DataFrame()
 
+# Top Banner Original com Badge de Limite Disponível
 nome_mes = mes_opcao.split(' ')[1].replace('(', '').replace(')', '')
 st.markdown(
     f"""
     <div class="header-banner">
         <div class="header-title">Ray & Yure | Painel de {nome_mes} ✨</div>
-        <div class="header-subtitle">Total de {len(df_mes)} contas registadas.</div>
-        <div class="limite-badge">💳 Limite Disponível em Cartões: R$ {total_limite_cartoes:,.2f}</div>
+        <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento do mês. ({len(df_mes)} contas)</div>
+        <div class="limite-badge">💳 Limite Disponível Total em Cartões: R$ {total_limite_cartoes:,.2f}</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+# Cards de Métricas Principais
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(f'<div class="metric-box card-total"><div class="metric-title">Total em Contas</div><div class="metric-val">R$ {total_deve:,.2f}</div></div>', unsafe_allow_html=True)
@@ -420,55 +452,116 @@ with c4:
 st.write("")
 
 # -------------------------------------------------------------
-# ANÁLISE CONDICIONAL
+# ANÁLISE CONDICIONAL DISCRETA
 # -------------------------------------------------------------
 if saldo_conta == 0:
-    st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta** para calcular o saldo final.")
+    st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta / Receitas** para calcular se haverá sobra ou déficit de caixa.")
 elif diferenca < 0:
-    st.error(f"⚠️ **Atenção:** Faltam **R$ {abs(diferenca):,.2f}** para cobrir as contas do mês.")
-    with st.expander("💡 O que fazer primeiro?", expanded=False):
+    st.error(f"⚠️ **Atenção Ray e Yure:** Faltam **R$ {abs(diferenca):,.2f}** para cobrir todas as pendências deste ciclo.")
+    with st.expander("💡 Diagnóstico do Especialista: O que fazer primeiro?", expanded=False):
+        total_cartoes = df_mes[df_mes["categoria"] == "Cartão de Crédito"]["valor"].sum() if not df_mes.empty else 0.0
         st.markdown(
-            """
-        1. **Essenciais**: Aluguel, Água/Luz e Transporte.
-        2. **Cartões com Juros Altos**: Negocie o parcelamento fixo no app antes de entrar no rotativo.
-        3. **Suspender Gastos Supérfluos** temporariamente.
+            f"""
+        1. **Sobrevivência e Teto Primeiro**: Garanta imediatamente Moradia e Transporte.
+        2. **Alerta Crítico em Cartões (Total: R$ {total_cartoes:,.2f})**:
+           - O rotativo possui juros altíssimos.
+           - Se não houver saldo para quitar tudo à vista, **não pague apenas o mínimo**. Ligue nos bancos antes do vencimento e solicite o parcelamento pré-fixado.
+        3. **Freio Imediato**: Congele compras parceladas (Shopee, etc.) até a soma dos cartões normalizar.
         """
         )
 else:
-    st.success(f"🎉 **Excelente!** O saldo disponível cobre todas as contas com sobra de **R$ {diferenca:,.2f}**.")
+    st.success(f"🎉 **Excelente!** O saldo disponível cobre 100% das contas com sobra de **R$ {diferenca:,.2f}**.")
+    with st.expander("🎯 Sugestão para a sobra de caixa:", expanded=False):
+        st.markdown(
+            """
+        - **Reserva de Emergência**: Guarde uma parte em uma aplicação com liquidez diária (100% CDI).
+        - **Quitação de Cartões Menores**: Antecipe faturas menores para diminuir a quantidade de boletos a acompanhar no próximo mês.
+        """
+        )
 
 st.write("")
 
 # -------------------------------------------------------------
-# ALERTAS
+# ALERTAS DE VENCIMENTO
 # -------------------------------------------------------------
 st.subheader("Alertas & Prazos de Vencimento")
 
 a1, a2, a3, a4 = st.columns(4)
+
 with a1:
     qtd_vencidas = len(contas_vencidas)
-    st.markdown(f'<div class="alert-card alert-vencidas">⚠️ {qtd_vencidas} Vencida(s)</div>', unsafe_allow_html=True)
+    val_vencidas = contas_vencidas['valor'].sum() if qtd_vencidas > 0 else 0.0
+    st.markdown(
+        f"""
+        <div class="alert-card alert-vencidas">
+            <span style="font-size: 1.05rem;">⚠️ {qtd_vencidas} Vencida(s)</span><br>
+            <span style="font-size: 0.85rem; font-weight: normal;">R$ {val_vencidas:,.2f} em atraso</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     with st.expander("Ver quais são", expanded=False):
-        for _, r in contas_vencidas.iterrows():
-            st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        if qtd_vencidas > 0:
+            for _, r in contas_vencidas.iterrows():
+                st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f} *(Venceu: {r['vencimento'].strftime('%d/%m')})*")
+        else:
+            st.caption("Nenhuma conta vencida! 👏")
+
 with a2:
     qtd_hoje = len(contas_hoje)
-    st.markdown(f'<div class="alert-card alert-hoje">⏰ {qtd_hoje} Vencem Hoje</div>', unsafe_allow_html=True)
+    val_hoje = contas_hoje['valor'].sum() if qtd_hoje > 0 else 0.0
+    st.markdown(
+        f"""
+        <div class="alert-card alert-hoje">
+            <span style="font-size: 1.05rem;">⏰ {qtd_hoje} Vencem Hoje</span><br>
+            <span style="font-size: 0.85rem; font-weight: normal;">R$ {val_hoje:,.2f} para pagar</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     with st.expander("Ver quais são", expanded=False):
-        for _, r in contas_hoje.iterrows():
-            st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        if qtd_hoje > 0:
+            for _, r in contas_hoje.iterrows():
+                st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        else:
+            st.caption("Nenhuma conta vencendo hoje.")
+
 with a3:
     qtd_amanha = len(contas_amanha)
-    st.markdown(f'<div class="alert-card alert-amanha">📅 {qtd_amanha} Vencem Amanhã</div>', unsafe_allow_html=True)
+    val_amanha = contas_amanha['valor'].sum() if qtd_amanha > 0 else 0.0
+    st.markdown(
+        f"""
+        <div class="alert-card alert-amanha">
+            <span style="font-size: 1.05rem;">📅 {qtd_amanha} Vencem Amanhã</span><br>
+            <span style="font-size: 0.85rem; font-weight: normal;">R$ {val_amanha:,.2f} para amanhã</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     with st.expander("Ver quais são", expanded=False):
-        for _, r in contas_amanha.iterrows():
-            st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        if qtd_amanha > 0:
+            for _, r in contas_amanha.iterrows():
+                st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        else:
+            st.caption("Nenhuma conta para amanhã.")
+
 with a4:
     qtd_pagas = len(contas_pagas)
-    st.markdown(f'<div class="alert-card alert-pagas">✅ {qtd_pagas} Já Pagas</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="alert-card alert-pagas">
+            <span style="font-size: 1.05rem;">✅ {qtd_pagas} Já Pagas</span><br>
+            <span style="font-size: 0.85rem; font-weight: normal;">R$ {total_pago:,.2f} quitados</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     with st.expander("Ver quais são", expanded=False):
-        for _, r in contas_pagas.iterrows():
-            st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        if qtd_pagas > 0:
+            for _, r in contas_pagas.iterrows():
+                st.markdown(f"• **{r['descricao']}**: R$ {r['valor']:,.2f}")
+        else:
+            st.caption("Nenhuma conta marcada como paga ainda.")
 
 st.write("")
 
@@ -477,10 +570,17 @@ st.write("")
 # -------------------------------------------------------------
 if not df_mes.empty:
     col_g1, col_g2 = st.columns([1, 1])
+
     with col_g1:
         st.subheader("Distribuição por Categoria")
         df_cat = df_mes.groupby("categoria")["valor"].sum().reset_index()
-        fig_pie = px.pie(df_cat, values="valor", names="categoria", hole=0.45)
+        fig_pie = px.pie(
+            df_cat,
+            values="valor",
+            names="categoria",
+            hole=0.45,
+            color_discrete_sequence=px.colors.qualitative.Prism,
+        )
         fig_pie.update_traces(textposition="inside", textinfo="percent+label")
         fig_pie.update_layout(margin=dict(t=15, b=15, l=15, r=15), showlegend=False)
         st.plotly_chart(fig_pie, use_container_width=True)
@@ -488,42 +588,59 @@ if not df_mes.empty:
     with col_g2:
         st.subheader("Top Despesas do Mês")
         df_top = df_mes.sort_values(by="valor", ascending=True).tail(7)
-        fig_bar = px.bar(df_top, x="valor", y="descricao", orientation="h", text_auto=".2f")
-        fig_bar.update_layout(margin=dict(t=15, b=15, l=15, r=15), xaxis_title="R$", yaxis_title="")
+        fig_bar = px.bar(
+            df_top,
+            x="valor",
+            y="descricao",
+            orientation="h",
+            text_auto=".2f",
+            color="valor",
+            color_continuous_scale="Tealgrn",
+        )
+        fig_bar.update_layout(
+            margin=dict(t=15, b=15, l=15, r=15),
+            xaxis_title="Valor (R$)",
+            yaxis_title="",
+            coloraxis_showscale=False,
+        )
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA COM FILTROS E EXCLUSÃO
+# TABELA DE CONTAS (SEM COLUNA ID, COM REALCE VERDE DIRETO)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
+st.caption("Edite valores, datas ou mude para **Pago**. Ao salvar, as contas pagas ficam destacadas em verde.")
 
+# Filtros Rápidos
 with st.container():
     f_col1, f_col2, f_col3, f_col4 = st.columns(4)
     with f_col1:
         opcoes_cat = ["Todas"] + sorted(list(df_mes["categoria"].unique())) if not df_mes.empty else ["Todas"]
-        filtro_cat = st.selectbox("Categoria:", opcoes_cat)
+        filtro_cat = st.selectbox("Categoria:", opcoes_cat, key="filtro_cat")
     with f_col2:
-        filtro_status = st.selectbox("Status:", ["Todos", "Aguardando Pagamento", "Pago", "Atrasado"])
+        filtro_status = st.selectbox("Status:", ["Todos", "Aguardando Pagamento", "Pago", "Atrasado"], key="filtro_status")
     with f_col3:
-        filtro_tipo = st.selectbox("Tipo:", ["Todos", "Cartão", "Fixo", "Variável", "Emergência"])
+        filtro_tipo = st.selectbox("Tipo:", ["Todos", "Cartão", "Fixo", "Variável", "Emergência"], key="filtro_tipo")
     with f_col4:
-        busca_texto = st.text_input("Buscar Nome:", placeholder="Ex: Nubank...")
+        busca_texto = st.text_input("Buscar Nome:", placeholder="Ex: Nubank, Aluguel...", key="filtro_busca")
 
-df_filtrada = df_mes.copy() if not df_mes.empty else pd.DataFrame()
-if not df_filtrada.empty:
-    df_filtrada["Excluir?"] = False
+df_exibicao = df_mes.copy() if not df_mes.empty else pd.DataFrame()
+
+if not df_exibicao.empty:
+    df_exibicao["Excluir?"] = False
+
     if filtro_cat != "Todas":
-        df_filtrada = df_filtrada[df_filtrada["categoria"] == filtro_cat]
+        df_exibicao = df_exibicao[df_exibicao["categoria"] == filtro_cat]
     if filtro_status != "Todos":
-        df_filtrada = df_filtrada[df_filtrada["status"] == filtro_status]
+        df_exibicao = df_exibicao[df_exibicao["status"] == filtro_status]
     if filtro_tipo != "Todos":
-        df_filtrada = df_filtrada[df_filtrada["tipo"] == filtro_tipo]
+        df_exibicao = df_exibicao[df_exibicao["tipo"] == filtro_tipo]
     if busca_texto.strip():
-        df_filtrada = df_filtrada[df_filtrada["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
+        df_exibicao = df_exibicao[df_exibicao["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
+# Configuração das Colunas (SEM ID)
 colunas_config = {
     "Excluir?": st.column_config.CheckboxColumn("Excluir?", default=False),
-    "id": st.column_config.NumberColumn("ID", disabled=True),
     "descricao": st.column_config.TextColumn("Descrição", required=True),
     "categoria": st.column_config.SelectboxColumn(
         "Categoria",
@@ -542,78 +659,80 @@ colunas_config = {
         required=True,
     ),
     "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", required=True),
-    "limite_disponivel": st.column_config.NumberColumn("Limite Disp. (R$)", format="R$ %.2f", default=0.0),
+    "limite_disponivel": st.column_config.NumberColumn("Limite Disp. Cartão (R$)", format="R$ %.2f", default=0.0),
     "vencimento": st.column_config.DateColumn("Vencimento", required=True, format="DD/MM/YYYY"),
-    "status": st.column_config.SelectboxColumn("Status", options=["Aguardando Pagamento", "Pago", "Atrasado"], required=True),
-    "tipo": st.column_config.SelectboxColumn("Tipo", options=["Cartão", "Fixo", "Variável", "Emergência"], required=True),
+    "status": st.column_config.SelectboxColumn(
+        "Status",
+        options=["Aguardando Pagamento", "Pago", "Atrasado"],
+        required=True,
+    ),
+    "tipo": st.column_config.SelectboxColumn(
+        "Tipo",
+        options=["Cartão", "Fixo", "Variável", "Emergência"],
+        required=True,
+    ),
 }
 
-colunas_ordem = ["Excluir?", "id", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
-colunas_exibir = [c for c in colunas_ordem if c in df_filtrada.columns]
+colunas_ordem = ["Excluir?", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+colunas_exibir = [c for c in colunas_ordem if c in df_exibicao.columns]
 
-df_editado = st.data_editor(
-    df_filtrada[colunas_exibir],
-    column_config=colunas_config,
-    use_container_width=True,
-    num_rows="dynamic",
-    key="tabela_principal_contas",
-)
+# Modo de Exibição com Verde Direto quando não está no modo de edição filtrada
+modo_edicao = st.toggle("✏️ Habilitar Edição da Tabela", value=True)
 
-btn1, btn2 = st.columns([2, 1])
-with btn1:
-    if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-        df_salvar = df_mes.copy()
-        for _, row in df_editado.iterrows():
-            if pd.notna(row.get("id")):
-                idx = df_salvar[df_salvar["id"] == row["id"]].index
-                if len(idx) > 0:
-                    for col in ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]:
-                        df_salvar.loc[idx, col] = row[col]
-            else:
-                nova_l = row.drop(labels=["Excluir?"], errors="ignore")
-                nova_l["mes_ano"] = mes_selecionado
-                df_salvar = pd.concat([df_salvar, pd.DataFrame([nova_l])], ignore_index=True)
-        update_db_filtered(df_salvar, mes_selecionado)
-        st.toast("Guardado!", icon="✅")
-        st.rerun()
+if modo_edicao:
+    df_editado = st.data_editor(
+        df_exibicao[colunas_exibir],
+        column_config=colunas_config,
+        use_container_width=True,
+        num_rows="dynamic",
+        key=f"editor_{mes_selecionado}",
+    )
 
-with btn2:
-    if st.button("🗑️ Excluir Selecionadas", use_container_width=True):
-        if "Excluir?" in df_editado.columns:
-            marcadas = df_editado[df_editado["Excluir?"] == True]
-            if not marcadas.empty:
-                ids = marcadas["id"].dropna().tolist()
-                excluir_contas_por_id(ids)
-                st.toast(f"{len(ids)} conta(s) excluída(s)!", icon="🗑️")
+    btn_s1, btn_s2 = st.columns([2, 1])
+    with btn_s1:
+        if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
+            # Salva exatamente o que está editado, eliminando qualquer risco de duplicação
+            save_mes_data(df_editado, mes_selecionado)
+            st.toast("Alterações salvas com sucesso!", icon="✅")
+            st.rerun()
+
+    with btn_s2:
+        if st.button("🗑️ Excluir Selecionadas", use_container_width=True):
+            if "Excluir?" in df_editado.columns:
+                mantidas = df_editado[df_editado["Excluir?"] != True].drop(columns=["Excluir?"])
+                save_mes_data(mantidas, mes_selecionado)
+                st.toast("Contas selecionadas excluídas!", icon="🗑️")
                 st.rerun()
-
-if not df_mes.empty and (df_mes["status"] == "Pago").any():
-    def highlight_pagos(row):
+else:
+    # Visualização direta com as linhas PAGAS em verde na própria tabela
+    def destacar_pagas(row):
         if row["status"] == "Pago":
             return ["background-color: #DCFCE7; color: #166534; font-weight: 600;"] * len(row)
         return [""] * len(row)
 
     cols_view = ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
-    df_pagos_view = df_mes[cols_view].style.apply(highlight_pagos, axis=1).format({
+    df_styled = df_exibicao[cols_view].style.apply(destacar_pagas, axis=1).format({
         "valor": "R$ {:,.2f}",
         "limite_disponivel": "R$ {:,.2f}",
     })
-    st.caption("Visão com destaque verde nas contas pagas:")
-    st.dataframe(df_pagos_view, use_container_width=True)
+    st.dataframe(df_styled, use_container_width=True)
 
 # -------------------------------------------------------------
-# CALCULADORA
+# CALCULADORA / SIMULADOR
 # -------------------------------------------------------------
 st.write("")
-with st.expander("🧮 Calculadora & Simulador de Pagamentos", expanded=False):
+with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para abrir)", expanded=False):
+    st.markdown("Filtre por categoria e use o botão **Selecionar Todas** para simular o valor total rapidamente.")
+
     if not df_mes.empty:
         todas_cats = ["Todas"] + sorted(list(df_mes["categoria"].unique()))
-        filtro_sim_cat = st.selectbox("Categoria da Simulação:", todas_cats)
+        filtro_sim_cat = st.selectbox("Categoria da Simulação:", todas_cats, key="filtro_sim")
+
         df_sim = df_mes.copy()
         if filtro_sim_cat != "Todas":
             df_sim = df_sim[df_sim["categoria"] == filtro_sim_cat]
 
-        marcar_todas = st.checkbox("☑️ Selecionar Todas da Seleção", value=False)
+        marcar_todas = st.checkbox("☑️ Selecionar Todas da Seleção", value=False, key="check_todas_sim")
         df_sim["Pagar?"] = marcar_todas
 
         sim_col_config = {
@@ -638,8 +757,8 @@ with st.expander("🧮 Calculadora & Simulador de Pagamentos", expanded=False):
 
         st.markdown("---")
         sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("Contas Selecionadas", f"{len(sel)}")
-        sc2.metric("Total Selecionado", f"R$ {tot_sel:,.2f}")
+        sc1.metric("Contas Selecionadas", f"{len(sel)} conta(s)")
+        sc2.metric("Total da Simulação", f"R$ {tot_sel:,.2f}")
         if saldo_conta > 0:
             sc3.metric(
                 "Saldo Restante",
@@ -647,3 +766,7 @@ with st.expander("🧮 Calculadora & Simulador de Pagamentos", expanded=False):
                 delta=f"{'Sobra' if sobra >= 0 else 'Falta'} R$ {abs(sobra):,.2f}",
                 delta_color="normal" if sobra >= 0 else "inverse",
             )
+        else:
+            sc3.info("Informe o Saldo em Conta na lateral para ver o impacto.")
+    else:
+        st.info("Nenhuma conta registrada neste mês.")
