@@ -17,13 +17,12 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Fundo da tela principal */
     .stApp {
         background-color: #F8FAFC;
         font-family: 'Inter', -apple-system, sans-serif;
     }
 
-    /* Menu Lateral Leve e Sofisticado */
+    /* Menu Lateral Leve */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%) !important;
         border-right: 1px solid #CBD5E1;
@@ -46,7 +45,7 @@ st.markdown(
         border-radius: 8px;
     }
 
-    /* Top Banner RESTAURADO (Cor original elegante) */
+    /* Top Banner Original */
     .header-banner {
         background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
@@ -57,6 +56,19 @@ st.markdown(
     }
     .header-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
     .header-subtitle { font-size: 0.95rem; opacity: 0.9; }
+
+    /* Badge discreto de limite */
+    .limite-badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(4px);
+        padding: 5px 14px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
 
     /* Cards de Métricas */
     .metric-box {
@@ -295,7 +307,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # -------------------------------------------------------------
-# BARRA LATERAL (MENU LEVE)
+# BARRA LATERAL (MENU LEVE COM EXPANDER)
 # -------------------------------------------------------------
 hoje = date.today()
 amanha = hoje + timedelta(days=1)
@@ -333,44 +345,46 @@ with st.sidebar:
     )
 
     st.divider()
-    st.subheader("➕ Nova Despesa")
-    with st.form("form_nova_conta", clear_on_submit=True):
-        nova_desc = st.text_input("Descrição (Ex: Cartão X, Mercado)")
-        nova_cat = st.selectbox(
-            "Categoria",
-            [
-                "Cartão de Crédito",
-                "Moradia",
-                "Transporte",
-                "Educação",
-                "Alimentação",
-                "Compras",
-                "Família / Ajuda",
-                "Dívidas / Pendências",
-                "Serviços",
-                "Outros",
-            ],
-        )
-        novo_valor = st.number_input("Valor da Fatura/Conta (R$)", min_value=0.01, step=10.0)
-        novo_limite = st.number_input("Limite Disponível no Cartão (R$)", min_value=0.0, step=50.0)
-        novo_venc = st.date_input("Vencimento", value=hoje)
-        novo_status = st.selectbox("Status", ["Aguardando Pagamento", "Pago", "Atrasado"])
-        novo_tipo = st.selectbox("Tipo", ["Cartão", "Fixo", "Variável", "Emergência"])
 
-        submit = st.form_submit_button("Cadastrar Despesa", use_container_width=True)
-        if submit:
-            if nova_desc.strip():
-                insert_conta(mes_selecionado, nova_desc, nova_cat, novo_valor, novo_limite, novo_venc, novo_status, novo_tipo)
-                st.success(f"Conta inserida em {mes_selecionado}!")
-                st.rerun()
-            else:
-                st.error("Preencha a descrição da conta.")
+    # Opção Nova Despesa em formato abre e fecha (Expander)
+    with st.expander("➕ Nova Despesa (Clique para abrir)", expanded=False):
+        with st.form("form_nova_conta", clear_on_submit=True):
+            nova_desc = st.text_input("Descrição (Ex: Cartão X, Mercado)")
+            nova_cat = st.selectbox(
+                "Categoria",
+                [
+                    "Cartão de Crédito",
+                    "Moradia",
+                    "Transporte",
+                    "Educação",
+                    "Alimentação",
+                    "Compras",
+                    "Família / Ajuda",
+                    "Dívidas / Pendências",
+                    "Serviços",
+                    "Outros",
+                ],
+            )
+            novo_valor = st.number_input("Valor da Conta (R$)", min_value=0.01, step=10.0)
+            novo_limite = st.number_input("Limite Disp. Cartão (R$)", min_value=0.0, step=50.0)
+            novo_venc = st.date_input("Vencimento", value=hoje)
+            novo_status = st.selectbox("Status", ["Aguardando Pagamento", "Pago", "Atrasado"])
+            novo_tipo = st.selectbox("Tipo", ["Cartão", "Fixo", "Variável", "Emergência"])
+
+            submit = st.form_submit_button("Cadastrar Despesa", use_container_width=True)
+            if submit:
+                if nova_desc.strip():
+                    insert_conta(mes_selecionado, nova_desc, nova_cat, novo_valor, novo_limite, novo_venc, novo_status, novo_tipo)
+                    st.success(f"Conta inserida em {mes_selecionado}!")
+                    st.rerun()
+                else:
+                    st.error("Preencha a descrição da conta.")
 
     st.divider()
     if mes_selecionado == "12/2026":
         if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
             clonar_fixos("11/2026", "12/2026")
-            st.success("Custos fixos copiados para Dezembro com sucesso!")
+            st.success("Custos fixos copiados para Dezembro!")
             st.rerun()
 
     if st.button("🚪 Sair do Painel", use_container_width=True):
@@ -386,6 +400,7 @@ df_mes = df_todos[df_todos["mes_ano"] == mes_selecionado].copy() if not df_todos
 total_deve = float(df_mes["valor"].sum()) if not df_mes.empty else 0.0
 total_pago = float(df_mes[df_mes["status"] == "Pago"]["valor"].sum()) if not df_mes.empty else 0.0
 total_pendente = float(df_mes[df_mes["status"] != "Pago"]["valor"].sum()) if not df_mes.empty else 0.0
+total_limite_cartoes = float(df_mes[df_mes["categoria"] == "Cartão de Crédito"]["limite_disponivel"].sum()) if not df_mes.empty else 0.0
 diferenca = saldo_conta - total_pendente
 
 if not df_mes.empty:
@@ -397,13 +412,14 @@ if not df_mes.empty:
 else:
     contas_pendentes = contas_vencidas = contas_hoje = contas_amanha = contas_pagas = pd.DataFrame()
 
-# Top Banner Restaurado (Gradiente azul profundo original)
+# Top Banner Original com Badge de Limite Disponível
 nome_mes = mes_opcao.split(' ')[1].replace('(', '').replace(')', '')
 st.markdown(
     f"""
     <div class="header-banner">
         <div class="header-title">Ray & Yure | Painel de {nome_mes} ✨</div>
         <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento do mês.</div>
+        <div class="limite-badge">💳 Limite Disponível Total em Cartões: R$ {total_limite_cartoes:,.2f}</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -425,7 +441,7 @@ with c4:
 st.write("")
 
 # -------------------------------------------------------------
-# ANÁLISE CONDICIONAL DISCRETA (SÓ APARECE QUANDO PREENCHE O SALDO)
+# ANÁLISE CONDICIONAL DISCRETA
 # -------------------------------------------------------------
 if saldo_conta == 0:
     st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta / Receitas** para calcular se haverá sobra ou déficit de caixa.")
@@ -435,10 +451,10 @@ elif diferenca < 0:
         total_cartoes = df_mes[df_mes["categoria"] == "Cartão de Crédito"]["valor"].sum() if not df_mes.empty else 0.0
         st.markdown(
             f"""
-        1. **Sobrevivência e Teto Primeiro**: Garanta imediatamente Moradia (Aluguel: R$ 1.390,00 e Luz/Água: R$ 256,00) e Transporte (R$ 400,00). Sem estabilidade básica, a capacidade de gerar renda é prejudicada.
+        1. **Sobrevivência e Teto Primeiro**: Garanta imediatamente Moradia (Aluguel: R$ 1.390,00 e Luz/Água: R$ 256,00) e Transporte (R$ 400,00).
         2. **Alerta Crítico em Cartões (Total: R$ {total_cartoes:,.2f})**:
-           - O rotativo de cartões com valores altos possui juros altíssimos.
-           - Se não houver saldo para quitar tudo à vista, **não pague apenas o mínimo**. Ligue nos bancos antes do vencimento e solicite o parcelamento da fatura com taxa fixa pré-fixada.
+           - O rotativo possui juros altíssimos.
+           - Se não houver saldo para quitar tudo à vista, **não pague apenas o mínimo**. Ligue nos bancos antes do vencimento e solicite o parcelamento pré-fixado.
         3. **Freio Imediato**: Congele compras parceladas (Shopee, etc.) até a soma dos cartões normalizar.
         """
         )
@@ -447,7 +463,7 @@ else:
     with st.expander("🎯 Sugestão para a sobra de caixa:", expanded=False):
         st.markdown(
             """
-        - **Reserva de Emergência**: Guarde uma parte em uma aplicação com liquidez diária (100% CDI) para blindar o orçamento de imprevistos.
+        - **Reserva de Emergência**: Guarde uma parte em uma aplicação com liquidez diária (100% CDI).
         - **Quitação de Cartões Menores**: Antecipe faturas menores para diminuir a quantidade de boletos a acompanhar no próximo mês.
         """
         )
@@ -455,7 +471,7 @@ else:
 st.write("")
 
 # -------------------------------------------------------------
-# ALERTAS DE VENCIMENTO (SEM EMOJI NO TÍTULO)
+# ALERTAS DE VENCIMENTO
 # -------------------------------------------------------------
 st.subheader("Alertas & Prazos de Vencimento")
 
@@ -539,7 +555,7 @@ with a4:
 st.write("")
 
 # -------------------------------------------------------------
-# GRÁFICOS & DISTRIBUIÇÃO
+# GRÁFICOS
 # -------------------------------------------------------------
 if not df_mes.empty:
     col_g1, col_g2 = st.columns([1, 1])
@@ -579,10 +595,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA INTERATIVA (COM LIMITE DISPONÍVEL)
+# TABELA INTERATIVA (COM REALCE VERDE POR DISPONIBILIDADE)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Altere dados, preencha o **Limite Disponível** dos cartões e clique no botão abaixo para salvar.")
+st.caption("Altere dados ou o Limite Disponível nas células e clique em Salvar Alterações.")
 
 colunas_config = {
     "id": st.column_config.NumberColumn("ID", disabled=True),
@@ -629,5 +645,78 @@ df_editado = st.data_editor(
 
 if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
     update_db(df_editado, mes_selecionado)
-    st.toast("Contas e limites salvos com sucesso!", icon="✅")
+    st.toast("Contas e alterações salvas com sucesso!", icon="✅")
     st.rerun()
+
+# Visão colorida com realce de saldo
+if saldo_conta > 0 and not df_mes.empty:
+    with st.expander("👀 Ver Cobertura Visual de Contas (Realce de Saldo)", expanded=False):
+        st.caption("Em verde: contas individuais cujo valor cabe dentro do seu saldo informado.")
+        
+        def highlight_cobertura(row):
+            if row["valor"] <= saldo_conta:
+                return ["background-color: #DCFCE7; color: #166534; font-weight: 600;"] * len(row)
+            return [""] * len(row)
+        
+        df_display = df_mes[["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status"]].copy()
+        df_styled = df_display.style.apply(highlight_cobertura, axis=1).format({
+            "valor": "R$ {:,.2f}",
+            "limite_disponivel": "R$ {:,.2f}",
+        })
+        st.dataframe(df_styled, use_container_width=True)
+
+# -------------------------------------------------------------
+# CALCULADORA / SIMULADOR DE GASTOS (ABRE E FECHA APÓS A TABELA)
+# -------------------------------------------------------------
+st.write("")
+with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para simular)", expanded=False):
+    st.markdown("Selecione quais contas deseja simular quitar para verificar o impacto instantâneo no seu saldo.")
+    
+    if not df_mes.empty:
+        # Filtro opcional por categoria
+        todas_cats = ["Todas"] + sorted(list(df_mes["categoria"].unique()))
+        filtro_cat = st.selectbox("Filtrar por Categoria na Simulação:", todas_cats)
+        
+        df_simulacao = df_mes.copy()
+        if filtro_cat != "Todas":
+            df_simulacao = df_simulacao[df_simulacao["categoria"] == filtro_cat]
+        
+        # Coluna booleana para marcar
+        df_simulacao["Simular Pagamento"] = False
+        
+        sim_col_config = {
+            "Simular Pagamento": st.column_config.CheckboxColumn("Pagar?", default=False),
+            "descricao": st.column_config.TextColumn("Descrição", disabled=True),
+            "categoria": st.column_config.TextColumn("Categoria", disabled=True),
+            "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", disabled=True),
+            "status": st.column_config.TextColumn("Status Atual", disabled=True),
+        }
+        
+        tabela_sim = st.data_editor(
+            df_simulacao[["Simular Pagamento", "descricao", "categoria", "valor", "status"]],
+            column_config=sim_col_config,
+            use_container_width=True,
+            disabled=["descricao", "categoria", "valor", "status"],
+            key="tabela_simulador",
+        )
+        
+        selecionados = tabela_sim[tabela_sim["Simular Pagamento"] == True]
+        total_selecionado = selecionados["valor"].sum()
+        sobra_simulada = saldo_conta - total_selecionado
+        
+        st.markdown("---")
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("Contas Selecionadas", f"{len(selecionados)} conta(s)")
+        sc2.metric("Total a Desembolsar", f"R$ {total_selecionado:,.2f}")
+        
+        if saldo_conta > 0:
+            sc3.metric(
+                "Saldo Restante Após Pagamento",
+                f"R$ {sobra_simulada:,.2f}",
+                delta=f"{'Sobra' if sobra_simulada >= 0 else 'Falta'} R$ {abs(sobra_simulada):,.2f}",
+                delta_color="normal" if sobra_simulada >= 0 else "inverse"
+            )
+        else:
+            sc3.info("Insira o Saldo na barra lateral para ver o impacto.")
+    else:
+        st.info("Nenhuma conta registrada neste mês para simular.")
