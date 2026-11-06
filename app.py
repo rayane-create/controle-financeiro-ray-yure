@@ -45,7 +45,7 @@ st.markdown(
         border-radius: 8px;
     }
 
-    /* Top Banner Original */
+    /* Top Banner */
     .header-banner {
         background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
@@ -57,7 +57,6 @@ st.markdown(
     .header-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
     .header-subtitle { font-size: 0.95rem; opacity: 0.9; }
 
-    /* Badge discreto de limite */
     .limite-badge {
         display: inline-block;
         background: rgba(255, 255, 255, 0.2);
@@ -70,7 +69,6 @@ st.markdown(
         border: 1px solid rgba(255, 255, 255, 0.3);
     }
 
-    /* Cards de Métricas */
     .metric-box {
         background-color: #ffffff;
         border-radius: 14px;
@@ -110,7 +108,6 @@ st.markdown(
     .card-saldo-neg .metric-title { color: #DC2626; }
     .card-saldo-neg .metric-val { color: #B91C1C; }
 
-    /* Alertas de Vencimento */
     .alert-card {
         border-radius: 12px;
         padding: 14px 16px;
@@ -161,48 +158,65 @@ def init_db():
 
     c.execute("SELECT COUNT(*) FROM contas")
     if c.fetchone()[0] == 0:
-        mes_atual = "11/2026"
-        venc_padrao = "2026-11-20"
-        dados_iniciais = [
-            (mes_atual, "Aluguel", "Moradia", 1390.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Água e luz", "Moradia", 256.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Faculdade", "Educação", 665.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Mãe", "Família / Ajuda", 50.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Atrasados", "Dívidas / Pendências", 240.0, 0.0, venc_padrao, "Atrasado", "Variável"),
-            (mes_atual, "Shopee", "Compras", 536.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Nubank", "Cartão de Crédito", 1374.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Neon", "Cartão de Crédito", 2134.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Digio", "Cartão de Crédito", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bmg", "Cartão de Crédito", 720.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bv", "Cartão de Crédito", 507.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Dm", "Outros", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Recarga pay", "Serviços", 136.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-            (mes_atual, "Mercado pago", "Cartão de Crédito", 540.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Santander", "Cartão de Crédito", 830.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Caixa", "Cartão de Crédito", 1284.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Bb", "Cartão de Crédito", 5000.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-            (mes_atual, "Moto", "Transporte", 400.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-            (mes_atual, "Brasil card", "Cartão de Crédito", 1575.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        ]
-        c.executemany(
-            """
-            INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            dados_iniciais,
-        )
-        conn.commit()
+        restaurar_contas_base(conn)
+    conn.commit()
     conn.close()
+
+
+def restaurar_contas_base(conn_externa=None):
+    close_at_end = False
+    if conn_externa is None:
+        conn = sqlite3.connect(DB_NAME)
+        close_at_end = True
+    else:
+        conn = conn_externa
+
+    c = conn.cursor()
+    c.execute("DELETE FROM contas WHERE mes_ano = '11/2026'")
+
+    mes_atual = "11/2026"
+    venc_padrao = "2026-11-20"
+    dados_iniciais = [
+        (mes_atual, "Aluguel", "Moradia", 1390.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+        (mes_atual, "Água e luz", "Moradia", 256.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+        (mes_atual, "Faculdade", "Educação", 665.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+        (mes_atual, "Mãe", "Família / Ajuda", 50.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+        (mes_atual, "Atrasados", "Dívidas / Pendências", 240.0, 0.0, venc_padrao, "Atrasado", "Variável"),
+        (mes_atual, "Shopee", "Compras", 536.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+        (mes_atual, "Nubank", "Cartão de Crédito", 1374.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Neon", "Cartão de Crédito", 2134.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Digio", "Cartão de Crédito", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Bmg", "Cartão de Crédito", 720.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Bv", "Cartão de Crédito", 507.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Dm", "Outros", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+        (mes_atual, "Recarga pay", "Serviços", 136.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+        (mes_atual, "Mercado pago", "Cartão de Crédito", 540.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Santander", "Cartão de Crédito", 830.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Caixa", "Cartão de Crédito", 1284.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Bb", "Cartão de Crédito", 5000.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        (mes_atual, "Moto", "Transporte", 400.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+        (mes_atual, "Brasil card", "Cartão de Crédito", 1575.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+    ]
+    c.executemany(
+        """
+        INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+        dados_iniciais,
+    )
+    conn.commit()
+    if close_at_end:
+        conn.close()
 
 
 def load_mes_data(mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query(
         """
-        SELECT descricao, categoria, valor, limite_disponivel, vencimento, status, tipo 
+        SELECT id, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo 
         FROM contas 
         WHERE mes_ano = ? 
-        ORDER BY vencimento ASC
+        ORDER BY vencimento ASC, id ASC
         """,
         conn,
         params=(mes_selecionado,),
@@ -213,20 +227,59 @@ def load_mes_data(mes_selecionado):
     return df
 
 
-def save_mes_data(df_editado, mes_selecionado):
+def save_mes_data_safe(df_editado_tela, df_mes_completo, mes_selecionado):
+    """Atualiza APENAS o que foi editado na tela sem jamais apagar as contas ocultas pelo filtro."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
 
-    df_save = df_editado.copy()
-    if "Excluir?" in df_save.columns:
-        df_save = df_save[df_save["Excluir?"] != True].drop(columns=["Excluir?"])
+    df_base = df_mes_completo.copy()
 
-    df_save["mes_ano"] = mes_selecionado
-    df_save["vencimento"] = df_save["vencimento"].astype(str)
+    # 1. Tratamento de exclusões marcadas
+    if "Excluir?" in df_editado_tela.columns:
+        ids_excluir = df_editado_tela[df_editado_tela["Excluir?"] == True]["id"].dropna().tolist()
+        if ids_excluir:
+            c.executemany("DELETE FROM contas WHERE id = ?", [(int(i),) for i in ids_excluir])
+            df_base = df_base[~df_base["id"].isin(ids_excluir)]
 
-    colunas = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
-    df_save[colunas].to_sql("contas", conn, if_exists="append", index=False)
+    # 2. Atualização segura registro a registro por ID
+    for _, row in df_editado_tela.iterrows():
+        if pd.notna(row.get("id")):
+            c.execute(
+                """
+                UPDATE contas 
+                SET descricao = ?, categoria = ?, valor = ?, limite_disponivel = ?, vencimento = ?, status = ?, tipo = ?
+                WHERE id = ?
+            """,
+                (
+                    row["descricao"],
+                    row["categoria"],
+                    float(row["valor"]),
+                    float(row.get("limite_disponivel", 0.0)),
+                    str(row["vencimento"]),
+                    row["status"],
+                    row["tipo"],
+                    int(row["id"]),
+                ),
+            )
+        else:
+            # Caso o usuário tenha adicionado linha direto na tabela
+            c.execute(
+                """
+                INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    mes_selecionado,
+                    row["descricao"],
+                    row["categoria"],
+                    float(row["valor"]),
+                    float(row.get("limite_disponivel", 0.0)),
+                    str(row["vencimento"]),
+                    row["status"],
+                    row["tipo"],
+                ),
+            )
+
     conn.commit()
     conn.close()
 
@@ -258,10 +311,10 @@ def clonar_fixos(mes_origem, mes_destino):
     )
     fixos = c.fetchall()
 
-    hoje = date.today().strftime("%Y-%m-%d")
+    hoje_str = date.today().strftime("%Y-%m-%d")
     novos = []
     for f in fixos:
-        novos.append((mes_destino, f[0], f[1], f[2], f[3], hoje, "Aguardando Pagamento", f[4]))
+        novos.append((mes_destino, f[0], f[1], f[2], f[3], hoje_str, "Aguardando Pagamento", f[4]))
 
     c.executemany(
         """
@@ -391,12 +444,22 @@ with st.sidebar:
                     st.error("Preencha a descrição da conta.")
 
     st.divider()
+
+    # Botão de Segurança caso tenha sumido algo anteriormente
+    if mes_selecionado == "11/2026":
+        st.markdown("#### 🛠️ Recuperação de Novembro")
+        if st.button("🔄 Restaurar 19 Contas Originais", use_container_width=True, help="Clique se sumiu alguma das suas contas originais."):
+            restaurar_contas_base()
+            st.toast("Contas originais restauradas!", icon="✅")
+            st.rerun()
+
     if mes_selecionado == "12/2026":
         if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
             clonar_fixos("11/2026", "12/2026")
             st.success("Custos fixos copiados para Dezembro!")
             st.rerun()
 
+    st.divider()
     if st.button("🚪 Sair do Painel", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
@@ -421,7 +484,7 @@ if not df_mes.empty:
 else:
     contas_pendentes = contas_vencidas = contas_hoje = contas_amanha = contas_pagas = pd.DataFrame()
 
-# Top Banner com Limite Disponível
+# Top Banner
 nome_mes = mes_opcao.split(' ')[1].replace('(', '').replace(')', '')
 st.markdown(
     f"""
@@ -434,7 +497,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Cards de Métricas Principais
+# Métricas
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(f'<div class="metric-box card-total"><div class="metric-title">Total em Contas</div><div class="metric-val">R$ {total_deve:,.2f}</div></div>', unsafe_allow_html=True)
@@ -603,10 +666,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA DE CONTAS (SEM COLUNA ID, COM REALCE VERDE DIRETO)
+# TABELA DE CONTAS (SEM COLUNA ID VISÍVEL, SALVAMENTO 100% SEGURO)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Edite dados, preencha o Limite Disponível ou altere o status para **Pago**. Ao salvar, o que for pago fica destacado em verde.")
+st.caption("Pode filtrar à vontade! Ao salvar, as contas ocultas pelo filtro continuam salvas e intactas.")
 
 # Filtros Rápidos
 with st.container():
@@ -635,7 +698,9 @@ if not df_exibicao.empty:
     if busca_texto.strip():
         df_exibicao = df_exibicao[df_exibicao["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
+# Configuração da Tabela - Ocultando ID da visão
 colunas_config = {
+    "id": None,  # Não exibe a coluna ID na tela, mas mantém para salvar com segurança
     "Excluir?": st.column_config.CheckboxColumn("Excluir?", default=False),
     "descricao": st.column_config.TextColumn("Descrição", required=True),
     "categoria": st.column_config.SelectboxColumn(
@@ -669,7 +734,7 @@ colunas_config = {
     ),
 }
 
-colunas_ordem = ["Excluir?", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+colunas_ordem = ["id", "Excluir?", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
 colunas_exibir = [c for c in colunas_ordem if c in df_exibicao.columns]
 
 modo_edicao = st.toggle("✏️ Habilitar Edição da Tabela", value=True)
@@ -686,17 +751,20 @@ if modo_edicao:
     btn_s1, btn_s2 = st.columns([2, 1])
     with btn_s1:
         if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-            save_mes_data(df_editado, mes_selecionado)
-            st.toast("Alterações salvas com sucesso!", icon="✅")
+            save_mes_data_safe(df_editado, df_mes, mes_selecionado)
+            st.toast("Alterações salvas com segurança!", icon="✅")
             st.rerun()
 
     with btn_s2:
         if st.button("🗑️ Excluir Selecionadas", use_container_width=True):
             if "Excluir?" in df_editado.columns:
-                mantidas = df_editado[df_editado["Excluir?"] != True].drop(columns=["Excluir?"])
-                save_mes_data(mantidas, mes_selecionado)
-                st.toast("Contas selecionadas excluídas!", icon="🗑️")
-                st.rerun()
+                marcadas = df_editado[df_editado["Excluir?"] == True]
+                if not marcadas.empty:
+                    save_mes_data_safe(df_editado, df_mes, mes_selecionado)
+                    st.toast("Contas selecionadas excluídas!", icon="🗑️")
+                    st.rerun()
+                else:
+                    st.warning("Marque a caixa 'Excluir?' das contas que quer apagar.")
 else:
     def destacar_pagas(row):
         if row["status"] == "Pago":
