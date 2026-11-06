@@ -1,3 +1,4 @@
+import io
 import sqlite3
 from datetime import date, timedelta
 import pandas as pd
@@ -22,7 +23,6 @@ st.markdown(
         font-family: 'Inter', -apple-system, sans-serif;
     }
 
-    /* Menu Lateral Leve */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%) !important;
         border-right: 1px solid #CBD5E1;
@@ -45,7 +45,6 @@ st.markdown(
         border-radius: 8px;
     }
 
-    /* Top Banner */
     .header-banner {
         background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
@@ -132,7 +131,7 @@ st.markdown(
 )
 
 # -------------------------------------------------------------
-# BANCO DE DADOS PERSISTENTE (SQLite)
+# BANCO DE DADOS & GESTÃO LOCAL
 # -------------------------------------------------------------
 DB_NAME = "contas.db"
 
@@ -158,55 +157,47 @@ def init_db():
 
     c.execute("SELECT COUNT(*) FROM contas")
     if c.fetchone()[0] == 0:
-        restaurar_contas_base(conn)
-    conn.commit()
+        mes_atual = "11/2026"
+        venc_padrao = "2026-11-20"
+        dados_iniciais = [
+            (mes_atual, "Aluguel", "Moradia", 1390.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+            (mes_atual, "Água e luz", "Moradia", 256.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+            (mes_atual, "Faculdade", "Educação", 665.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+            (mes_atual, "Mãe", "Família / Ajuda", 50.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+            (mes_atual, "Atrasados", "Dívidas / Pendências", 240.0, 0.0, venc_padrao, "Atrasado", "Variável"),
+            (mes_atual, "Shopee", "Compras", 536.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+            (mes_atual, "Nubank", "Cartão de Crédito", 1374.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Neon", "Cartão de Crédito", 2134.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Digio", "Cartão de Crédito", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Bmg", "Cartão de Crédito", 720.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Bv", "Cartão de Crédito", 507.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Dm", "Outros", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+            (mes_atual, "Recarga pay", "Serviços", 136.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
+            (mes_atual, "Mercado pago", "Cartão de Crédito", 540.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Santander", "Cartão de Crédito", 830.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Caixa", "Cartão de Crédito", 1284.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Bb", "Cartão de Crédito", 5000.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+            (mes_atual, "Moto", "Transporte", 400.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
+            (mes_atual, "Brasil card", "Cartão de Crédito", 1575.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
+        ]
+        c.executemany(
+            """
+            INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            dados_iniciais,
+        )
+        conn.commit()
     conn.close()
 
 
-def restaurar_contas_base(conn_externa=None):
-    close_at_end = False
-    if conn_externa is None:
-        conn = sqlite3.connect(DB_NAME)
-        close_at_end = True
-    else:
-        conn = conn_externa
-
-    c = conn.cursor()
-    c.execute("DELETE FROM contas WHERE mes_ano = '11/2026'")
-
-    mes_atual = "11/2026"
-    venc_padrao = "2026-11-20"
-    dados_iniciais = [
-        (mes_atual, "Aluguel", "Moradia", 1390.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-        (mes_atual, "Água e luz", "Moradia", 256.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-        (mes_atual, "Faculdade", "Educação", 665.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-        (mes_atual, "Mãe", "Família / Ajuda", 50.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-        (mes_atual, "Atrasados", "Dívidas / Pendências", 240.0, 0.0, venc_padrao, "Atrasado", "Variável"),
-        (mes_atual, "Shopee", "Compras", 536.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-        (mes_atual, "Nubank", "Cartão de Crédito", 1374.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Neon", "Cartão de Crédito", 2134.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Digio", "Cartão de Crédito", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Bmg", "Cartão de Crédito", 720.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Bv", "Cartão de Crédito", 507.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Dm", "Outros", 250.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-        (mes_atual, "Recarga pay", "Serviços", 136.0, 0.0, venc_padrao, "Aguardando Pagamento", "Variável"),
-        (mes_atual, "Mercado pago", "Cartão de Crédito", 540.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Santander", "Cartão de Crédito", 830.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Caixa", "Cartão de Crédito", 1284.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Bb", "Cartão de Crédito", 5000.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-        (mes_atual, "Moto", "Transporte", 400.0, 0.0, venc_padrao, "Aguardando Pagamento", "Fixo"),
-        (mes_atual, "Brasil card", "Cartão de Crédito", 1575.0, 0.0, venc_padrao, "Aguardando Pagamento", "Cartão"),
-    ]
-    c.executemany(
-        """
-        INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        dados_iniciais,
-    )
-    conn.commit()
-    if close_at_end:
-        conn.close()
+def load_all_data():
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT id, mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo FROM contas", conn)
+    conn.close()
+    if not df.empty:
+        df["vencimento"] = pd.to_datetime(df["vencimento"]).dt.date
+    return df
 
 
 def load_mes_data(mes_selecionado):
@@ -227,22 +218,19 @@ def load_mes_data(mes_selecionado):
     return df
 
 
-def save_mes_data_safe(df_editado_tela, df_mes_completo, mes_selecionado):
-    """Atualiza APENAS o que foi editado na tela sem jamais apagar as contas ocultas pelo filtro."""
+def save_mes_data_safe(df_editado_tela, mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
 
-    df_base = df_mes_completo.copy()
-
-    # 1. Tratamento de exclusões marcadas
+    # Tratamento de exclusões
     if "Excluir?" in df_editado_tela.columns:
         ids_excluir = df_editado_tela[df_editado_tela["Excluir?"] == True]["id"].dropna().tolist()
         if ids_excluir:
             c.executemany("DELETE FROM contas WHERE id = ?", [(int(i),) for i in ids_excluir])
-            df_base = df_base[~df_base["id"].isin(ids_excluir)]
 
-    # 2. Atualização segura registro a registro por ID
     for _, row in df_editado_tela.iterrows():
+        if "Excluir?" in row and row["Excluir?"] == True:
+            continue
         if pd.notna(row.get("id")):
             c.execute(
                 """
@@ -262,7 +250,6 @@ def save_mes_data_safe(df_editado_tela, df_mes_completo, mes_selecionado):
                 ),
             )
         else:
-            # Caso o usuário tenha adicionado linha direto na tabela
             c.execute(
                 """
                 INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
@@ -298,31 +285,40 @@ def insert_conta(mes_ano, descricao, categoria, valor, limite, vencimento, statu
     conn.close()
 
 
-def clonar_fixos(mes_origem, mes_destino):
+def restaurar_de_excel(df_upload):
+    """Substitui o banco de dados pelo arquivo Excel importado."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    c.execute("DROP TABLE IF EXISTS contas")
     c.execute(
         """
-        SELECT descricao, categoria, valor, limite_disponivel, tipo 
-        FROM contas 
-        WHERE mes_ano = ? AND tipo = 'Fixo'
-        """,
-        (mes_origem,),
+        CREATE TABLE contas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mes_ano TEXT NOT NULL,
+            descricao TEXT NOT NULL,
+            categoria TEXT NOT NULL,
+            valor REAL NOT NULL,
+            limite_disponivel REAL DEFAULT 0.0,
+            vencimento TEXT NOT NULL,
+            status TEXT NOT NULL,
+            tipo TEXT NOT NULL
+        )
+    """
     )
-    fixos = c.fetchall()
+    colunas_obrigatorias = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
+    for col in colunas_obrigatorias:
+        if col not in df_upload.columns:
+            if col == "limite_disponivel":
+                df_upload[col] = 0.0
+            elif col == "mes_ano":
+                df_upload[col] = "11/2026"
+            elif col == "status":
+                df_upload[col] = "Aguardando Pagamento"
+            elif col == "tipo":
+                df_upload[col] = "Variável"
 
-    hoje_str = date.today().strftime("%Y-%m-%d")
-    novos = []
-    for f in fixos:
-        novos.append((mes_destino, f[0], f[1], f[2], f[3], hoje_str, "Aguardando Pagamento", f[4]))
-
-    c.executemany(
-        """
-        INSERT INTO contas (mes_ano, descricao, categoria, valor, limite_disponivel, vencimento, status, tipo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        novos,
-    )
+    df_upload["vencimento"] = df_upload["vencimento"].astype(str)
+    df_upload[colunas_obrigatorias].to_sql("contas", conn, if_exists="append", index=False)
     conn.commit()
     conn.close()
 
@@ -330,7 +326,7 @@ def clonar_fixos(mes_origem, mes_destino):
 init_db()
 
 # -------------------------------------------------------------
-# LOGIN & AUTENTICAÇÃO
+# LOGIN
 # -------------------------------------------------------------
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -357,7 +353,7 @@ def tela_login():
         senha_correta = st.secrets.get("auth", {}).get("senha", "873401")
 
         if st.button("Acessar Painel", use_container_width=True, type="primary"):
-            if email.strip().lower() == email_correto.strip().lower() and senha.strip() == str(senha_correta).strip():
+            if email.strip().lower() == str(email_correto).strip().lower() and senha.strip() == str(senha_correta).strip():
                 st.session_state.autenticado = True
                 st.rerun()
             else:
@@ -371,7 +367,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # -------------------------------------------------------------
-# BARRA LATERAL (MENU LEVE COM EXPANDER)
+# BARRA LATERAL (MENU & BACKUP EXCEL)
 # -------------------------------------------------------------
 hoje = date.today()
 amanha = hoje + timedelta(days=1)
@@ -445,19 +441,33 @@ with st.sidebar:
 
     st.divider()
 
-    # Botão de Segurança caso tenha sumido algo anteriormente
-    if mes_selecionado == "11/2026":
-        st.markdown("#### 🛠️ Recuperação de Novembro")
-        if st.button("🔄 Restaurar 19 Contas Originais", use_container_width=True, help="Clique se sumiu alguma das suas contas originais."):
-            restaurar_contas_base()
-            st.toast("Contas originais restauradas!", icon="✅")
-            st.rerun()
+    # SISTEMA DE SALVAMENTO / BACKUP EM EXCEL
+    st.subheader("💾 Backup e Restauração")
+    
+    # Gerar arquivo Excel para download
+    df_todos_backup = load_all_data()
+    output_excel = io.BytesIO()
+    with pd.ExcelWriter(output_excel, engine="openpyxl") as writer:
+        df_todos_backup.to_excel(writer, index=False, sheet_name="Contas")
+    excel_data = output_excel.getvalue()
 
-    if mes_selecionado == "12/2026":
-        if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
-            clonar_fixos("11/2026", "12/2026")
-            st.success("Custos fixos copiados para Dezembro!")
-            st.rerun()
+    st.download_button(
+        label="📥 Baixar Dados Salvos (Excel)",
+        data=excel_data,
+        file_name=f"financas_ray_yure_backup_{date.today().strftime('%d_%m_%Y')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help="Baixe seu arquivo Excel atualizado com todas as datas, valores e limites para nunca perder nada.",
+    )
+
+    with st.expander("📤 Carregar / Restaurar Excel", expanded=False):
+        uploaded_file = st.file_uploader("Suba seu arquivo Excel salvo:", type=["xlsx", "xls"])
+        if uploaded_file is not None:
+            if st.button("Restaurar Este Arquivo", type="primary", use_container_width=True):
+                df_subir = pd.read_excel(uploaded_file)
+                restaurar_de_excel(df_subir)
+                st.success("Dados restaurados com sucesso do Excel!")
+                st.rerun()
 
     st.divider()
     if st.button("🚪 Sair do Painel", use_container_width=True):
@@ -666,10 +676,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA DE CONTAS (SEM COLUNA ID VISÍVEL, SALVAMENTO 100% SEGURO)
+# TABELA DE CONTAS (SEM ID VISÍVEL, SALVA COM FILTRO ATIVO)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Pode filtrar à vontade! Ao salvar, as contas ocultas pelo filtro continuam salvas e intactas.")
+st.caption("Pode filtrar sem medo de perder dados. Ao salvar, baixe o backup no menu lateral para garantir seu arquivo!")
 
 # Filtros Rápidos
 with st.container():
@@ -698,9 +708,8 @@ if not df_exibicao.empty:
     if busca_texto.strip():
         df_exibicao = df_exibicao[df_exibicao["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
-# Configuração da Tabela - Ocultando ID da visão
 colunas_config = {
-    "id": None,  # Não exibe a coluna ID na tela, mas mantém para salvar com segurança
+    "id": None,
     "Excluir?": st.column_config.CheckboxColumn("Excluir?", default=False),
     "descricao": st.column_config.TextColumn("Descrição", required=True),
     "categoria": st.column_config.SelectboxColumn(
@@ -751,8 +760,8 @@ if modo_edicao:
     btn_s1, btn_s2 = st.columns([2, 1])
     with btn_s1:
         if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-            save_mes_data_safe(df_editado, df_mes, mes_selecionado)
-            st.toast("Alterações salvas com segurança!", icon="✅")
+            save_mes_data_safe(df_editado, mes_selecionado)
+            st.toast("Alterações salvas!", icon="✅")
             st.rerun()
 
     with btn_s2:
@@ -760,8 +769,8 @@ if modo_edicao:
             if "Excluir?" in df_editado.columns:
                 marcadas = df_editado[df_editado["Excluir?"] == True]
                 if not marcadas.empty:
-                    save_mes_data_safe(df_editado, df_mes, mes_selecionado)
-                    st.toast("Contas selecionadas excluídas!", icon="🗑️")
+                    save_mes_data_safe(df_editado, mes_selecionado)
+                    st.toast("Contas excluídas!", icon="🗑️")
                     st.rerun()
                 else:
                     st.warning("Marque a caixa 'Excluir?' das contas que quer apagar.")
@@ -779,7 +788,7 @@ else:
     st.dataframe(df_styled, use_container_width=True)
 
 # -------------------------------------------------------------
-# CALCULADORA / SIMULADOR (APENAS CONTAS PENDENTES / NÃO PAGAS)
+# CALCULADORA / SIMULADOR (APENAS NÃO PAGAS)
 # -------------------------------------------------------------
 st.write("")
 with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para abrir)", expanded=False):
