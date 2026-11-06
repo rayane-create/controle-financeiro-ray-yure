@@ -202,7 +202,7 @@ def load_mes_data(mes_selecionado):
         SELECT descricao, categoria, valor, limite_disponivel, vencimento, status, tipo 
         FROM contas 
         WHERE mes_ano = ? 
-        ORDER BY vencimento ASC, id ASC
+        ORDER BY vencimento ASC
         """,
         conn,
         params=(mes_selecionado,),
@@ -214,13 +214,11 @@ def load_mes_data(mes_selecionado):
 
 
 def save_mes_data(df_editado, mes_selecionado):
-    """Substitui com exatidão as contas do mês atual, sem duplicar."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
 
     df_save = df_editado.copy()
-    # Remove colunas auxiliares como 'Excluir?' se houver
     if "Excluir?" in df_save.columns:
         df_save = df_save[df_save["Excluir?"] != True].drop(columns=["Excluir?"])
 
@@ -310,7 +308,7 @@ def tela_login():
                 st.session_state.autenticado = True
                 st.rerun()
             else:
-                st.error("Credenciais inválidas. Verifique o e-mail ou a senha digitada.")
+                st.error("Credenciais inválidas.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -354,7 +352,7 @@ with st.sidebar:
         min_value=0.0,
         value=0.0,
         step=100.0,
-        help="Informe o valor que você tem em conta disponível para esse mês.",
+        help="Informe o valor disponível em conta.",
     )
 
     st.divider()
@@ -423,7 +421,7 @@ if not df_mes.empty:
 else:
     contas_pendentes = contas_vencidas = contas_hoje = contas_amanha = contas_pagas = pd.DataFrame()
 
-# Top Banner Original com Badge de Limite Disponível
+# Top Banner com Limite Disponível
 nome_mes = mes_opcao.split(' ')[1].replace('(', '').replace(')', '')
 st.markdown(
     f"""
@@ -455,18 +453,17 @@ st.write("")
 # ANÁLISE CONDICIONAL DISCRETA
 # -------------------------------------------------------------
 if saldo_conta == 0:
-    st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta / Receitas** para calcular se haverá sobra ou déficit de caixa.")
+    st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta / Receitas** para calcular o saldo final.")
 elif diferenca < 0:
     st.error(f"⚠️ **Atenção Ray e Yure:** Faltam **R$ {abs(diferenca):,.2f}** para cobrir todas as pendências deste ciclo.")
     with st.expander("💡 Diagnóstico do Especialista: O que fazer primeiro?", expanded=False):
         total_cartoes = df_mes[df_mes["categoria"] == "Cartão de Crédito"]["valor"].sum() if not df_mes.empty else 0.0
         st.markdown(
             f"""
-        1. **Sobrevivência e Teto Primeiro**: Garanta imediatamente Moradia e Transporte.
+        1. **Sobrevivência e Teto Primeiro**: Garanta Aluguel, Água/Luz e Moto.
         2. **Alerta Crítico em Cartões (Total: R$ {total_cartoes:,.2f})**:
-           - O rotativo possui juros altíssimos.
-           - Se não houver saldo para quitar tudo à vista, **não pague apenas o mínimo**. Ligue nos bancos antes do vencimento e solicite o parcelamento pré-fixado.
-        3. **Freio Imediato**: Congele compras parceladas (Shopee, etc.) até a soma dos cartões normalizar.
+           - Não pague apenas o mínimo se faltar dinheiro: acione o parcelamento fixo no app antes do vencimento para evitar os juros abusivos do rotativo.
+        3. **Freio em Gastos Supérfluos** até equilibrar os cartões.
         """
         )
 else:
@@ -474,8 +471,8 @@ else:
     with st.expander("🎯 Sugestão para a sobra de caixa:", expanded=False):
         st.markdown(
             """
-        - **Reserva de Emergência**: Guarde uma parte em uma aplicação com liquidez diária (100% CDI).
-        - **Quitação de Cartões Menores**: Antecipe faturas menores para diminuir a quantidade de boletos a acompanhar no próximo mês.
+        - **Reserva de Emergência**: Guarde uma parte em uma aplicação de liquidez diária (100% CDI).
+        - **Quitação de Cartões Menores**: Antecipe faturas menores para diminuir boletos no mês seguinte.
         """
         )
 
@@ -609,7 +606,7 @@ if not df_mes.empty:
 # TABELA DE CONTAS (SEM COLUNA ID, COM REALCE VERDE DIRETO)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Edite valores, datas ou mude para **Pago**. Ao salvar, as contas pagas ficam destacadas em verde.")
+st.caption("Edite dados, preencha o Limite Disponível ou altere o status para **Pago**. Ao salvar, o que for pago fica destacado em verde.")
 
 # Filtros Rápidos
 with st.container():
@@ -638,7 +635,6 @@ if not df_exibicao.empty:
     if busca_texto.strip():
         df_exibicao = df_exibicao[df_exibicao["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
-# Configuração das Colunas (SEM ID)
 colunas_config = {
     "Excluir?": st.column_config.CheckboxColumn("Excluir?", default=False),
     "descricao": st.column_config.TextColumn("Descrição", required=True),
@@ -676,7 +672,6 @@ colunas_config = {
 colunas_ordem = ["Excluir?", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
 colunas_exibir = [c for c in colunas_ordem if c in df_exibicao.columns]
 
-# Modo de Exibição com Verde Direto quando não está no modo de edição filtrada
 modo_edicao = st.toggle("✏️ Habilitar Edição da Tabela", value=True)
 
 if modo_edicao:
@@ -691,7 +686,6 @@ if modo_edicao:
     btn_s1, btn_s2 = st.columns([2, 1])
     with btn_s1:
         if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-            # Salva exatamente o que está editado, eliminando qualquer risco de duplicação
             save_mes_data(df_editado, mes_selecionado)
             st.toast("Alterações salvas com sucesso!", icon="✅")
             st.rerun()
@@ -704,7 +698,6 @@ if modo_edicao:
                 st.toast("Contas selecionadas excluídas!", icon="🗑️")
                 st.rerun()
 else:
-    # Visualização direta com as linhas PAGAS em verde na própria tabela
     def destacar_pagas(row):
         if row["status"] == "Pago":
             return ["background-color: #DCFCE7; color: #166534; font-weight: 600;"] * len(row)
@@ -718,17 +711,19 @@ else:
     st.dataframe(df_styled, use_container_width=True)
 
 # -------------------------------------------------------------
-# CALCULADORA / SIMULADOR
+# CALCULADORA / SIMULADOR (APENAS CONTAS PENDENTES / NÃO PAGAS)
 # -------------------------------------------------------------
 st.write("")
 with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para abrir)", expanded=False):
-    st.markdown("Filtre por categoria e use o botão **Selecionar Todas** para simular o valor total rapidamente.")
+    df_sim_pendentes = df_mes[df_mes["status"] != "Pago"].copy() if not df_mes.empty else pd.DataFrame()
 
-    if not df_mes.empty:
-        todas_cats = ["Todas"] + sorted(list(df_mes["categoria"].unique()))
+    if not df_sim_pendentes.empty:
+        st.markdown("Selecione quais despesas pendentes deseja simular para calcular o desembolso e o impacto no seu saldo:")
+
+        todas_cats = ["Todas"] + sorted(list(df_sim_pendentes["categoria"].unique()))
         filtro_sim_cat = st.selectbox("Categoria da Simulação:", todas_cats, key="filtro_sim")
 
-        df_sim = df_mes.copy()
+        df_sim = df_sim_pendentes.copy()
         if filtro_sim_cat != "Todas":
             df_sim = df_sim[df_sim["categoria"] == filtro_sim_cat]
 
@@ -748,7 +743,7 @@ with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para abrir)
             column_config=sim_col_config,
             use_container_width=True,
             disabled=["descricao", "categoria", "valor", "status"],
-            key=f"sim_{marcar_todas}_{filtro_sim_cat}",
+            key=f"sim_{marcar_todas}_{filtro_sim_cat}_{len(df_sim)}",
         )
 
         sel = tab_sim[tab_sim["Pagar?"] == True]
@@ -769,4 +764,4 @@ with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para abrir)
         else:
             sc3.info("Informe o Saldo em Conta na lateral para ver o impacto.")
     else:
-        st.info("Nenhuma conta registrada neste mês.")
+        st.success("🎉 Todas as contas deste mês já foram pagas! Nenhuma pendência para simular.")
