@@ -5,7 +5,7 @@ import plotly.express as px
 import streamlit as st
 
 # -------------------------------------------------------------
-# CONFIGURAÇÃO DA PÁGINA & IDENTIDADE VISUAL LEVE
+# CONFIGURAÇÃO DA PÁGINA & IDENTIDADE VISUAL
 # -------------------------------------------------------------
 st.set_page_config(
     page_title="Ray & Yure | Finanças",
@@ -23,7 +23,7 @@ st.markdown(
         font-family: 'Inter', -apple-system, sans-serif;
     }
 
-    /* Menu Lateral Leve e Sofisticado (Tons claros) */
+    /* Menu Lateral Leve e Sofisticado */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #F1F5F9 0%, #E2E8F0 100%) !important;
         border-right: 1px solid #CBD5E1;
@@ -46,17 +46,17 @@ st.markdown(
         border-radius: 8px;
     }
 
-    /* Top Banner */
+    /* Top Banner RESTAURADO (Cor original elegante) */
     .header-banner {
-        background: linear-gradient(90deg, #2563EB 0%, #3B82F6 100%);
+        background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
         color: white;
-        padding: 22px 28px;
+        padding: 24px;
         border-radius: 16px;
-        box-shadow: 0 10px 20px -5px rgba(37, 99, 235, 0.2);
+        box-shadow: 0 10px 25px -5px rgba(30, 58, 138, 0.25);
         margin-bottom: 22px;
     }
-    .header-title { font-size: 1.7rem; font-weight: 800; margin-bottom: 4px; }
-    .header-subtitle { font-size: 0.95rem; opacity: 0.92; }
+    .header-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
+    .header-subtitle { font-size: 0.95rem; opacity: 0.9; }
 
     /* Cards de Métricas */
     .metric-box {
@@ -131,7 +131,6 @@ DB_NAME = "contas.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Criação da tabela com mês de referência e limite disponível
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS contas (
@@ -148,7 +147,6 @@ def init_db():
     """
     )
 
-    # Migração segura para adicionar colunas caso tabela antiga já exista
     c.execute("PRAGMA table_info(contas)")
     colunas_existentes = [col[1] for col in c.fetchall()]
 
@@ -157,7 +155,6 @@ def init_db():
     if "limite_disponivel" not in colunas_existentes:
         c.execute("ALTER TABLE contas ADD COLUMN limite_disponivel REAL DEFAULT 0.0")
 
-    # Inserção das 19 contas em Novembro caso vazia
     c.execute("SELECT COUNT(*) FROM contas")
     if c.fetchone()[0] == 0:
         mes_atual = "11/2026"
@@ -205,7 +202,6 @@ def load_all_data():
 
 def update_db(df_atualizado, mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
-    # Deleta as contas apenas do mês em edição e reinsere com as alterações
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
     
@@ -213,7 +209,6 @@ def update_db(df_atualizado, mes_selecionado):
     df_save["mes_ano"] = mes_selecionado
     df_save["vencimento"] = df_save["vencimento"].astype(str)
     
-    # Inserção sem a coluna 'id' para deixar o autoincrement agir
     colunas_salvar = ["mes_ano", "descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]
     df_save[colunas_salvar].to_sql("contas", conn, if_exists="append", index=False)
     conn.commit()
@@ -259,7 +254,7 @@ def clonar_fixos(mes_origem, mes_destino):
 init_db()
 
 # -------------------------------------------------------------
-# LOGIN & AUTENTICAÇÃO COM STREAMLIT SECRETS
+# LOGIN & AUTENTICAÇÃO
 # -------------------------------------------------------------
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -300,7 +295,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # -------------------------------------------------------------
-# BARRA LATERAL (LEVE E CLARA)
+# BARRA LATERAL (MENU LEVE)
 # -------------------------------------------------------------
 hoje = date.today()
 amanha = hoje + timedelta(days=1)
@@ -372,11 +367,10 @@ with st.sidebar:
                 st.error("Preencha a descrição da conta.")
 
     st.divider()
-    # Ferramenta para clonar custos fixos
     if mes_selecionado == "12/2026":
         if st.button("📋 Copiar Custos Fixos de Nov para Dez", use_container_width=True):
             clonar_fixos("11/2026", "12/2026")
-            st.success("Custos fixos (Moradia, Faculdade, etc.) importados para Dezembro!")
+            st.success("Custos fixos copiados para Dezembro com sucesso!")
             st.rerun()
 
     if st.button("🚪 Sair do Painel", use_container_width=True):
@@ -384,7 +378,7 @@ with st.sidebar:
         st.rerun()
 
 # -------------------------------------------------------------
-# FILTRO DE DADOS POR MÊS E CÁLCULOS
+# CÁLCULOS
 # -------------------------------------------------------------
 df_todos = load_all_data()
 df_mes = df_todos[df_todos["mes_ano"] == mes_selecionado].copy() if not df_todos.empty else pd.DataFrame()
@@ -392,10 +386,8 @@ df_mes = df_todos[df_todos["mes_ano"] == mes_selecionado].copy() if not df_todos
 total_deve = float(df_mes["valor"].sum()) if not df_mes.empty else 0.0
 total_pago = float(df_mes[df_mes["status"] == "Pago"]["valor"].sum()) if not df_mes.empty else 0.0
 total_pendente = float(df_mes[df_mes["status"] != "Pago"]["valor"].sum()) if not df_mes.empty else 0.0
-total_limite_disp = float(df_mes[df_mes["categoria"] == "Cartão de Crédito"]["limite_disponivel"].sum()) if not df_mes.empty else 0.0
 diferenca = saldo_conta - total_pendente
 
-# Classificação por vencimento
 if not df_mes.empty:
     contas_pendentes = df_mes[df_mes["status"] != "Pago"]
     contas_vencidas = contas_pendentes[(contas_pendentes["vencimento"] < hoje) | (contas_pendentes["status"] == "Atrasado")]
@@ -405,18 +397,19 @@ if not df_mes.empty:
 else:
     contas_pendentes = contas_vencidas = contas_hoje = contas_amanha = contas_pagas = pd.DataFrame()
 
-# Banner Principal
+# Top Banner Restaurado (Gradiente azul profundo original)
+nome_mes = mes_opcao.split(' ')[1].replace('(', '').replace(')', '')
 st.markdown(
     f"""
     <div class="header-banner">
-        <div class="header-title">Ray & Yure | Painel de {mes_opcao.split(' ')[1].replace('(', '').replace(')', '')}</div>
-        <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento financeiro do mês.</div>
+        <div class="header-title">Ray & Yure | Painel de {nome_mes} ✨</div>
+        <div class="header-subtitle">Controle de vencimentos, limites de cartão e planejamento do mês.</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# Métricas no topo
+# Cards de Métricas Principais
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(f'<div class="metric-box card-total"><div class="metric-title">Total em Contas</div><div class="metric-val">R$ {total_deve:,.2f}</div></div>', unsafe_allow_html=True)
@@ -428,6 +421,36 @@ with c4:
     card_style = "card-saldo-pos" if diferenca >= 0 else "card-saldo-neg"
     status_label = "Sobra em Caixa" if diferenca >= 0 else "Falta para Fechar"
     st.markdown(f'<div class="metric-box {card_style}"><div class="metric-title">{status_label}</div><div class="metric-val">R$ {abs(diferenca):,.2f}</div></div>', unsafe_allow_html=True)
+
+st.write("")
+
+# -------------------------------------------------------------
+# ANÁLISE CONDICIONAL DISCRETA (SÓ APARECE QUANDO PREENCHE O SALDO)
+# -------------------------------------------------------------
+if saldo_conta == 0:
+    st.info("ℹ️ Insira na barra lateral o seu **Saldo em Conta / Receitas** para calcular se haverá sobra ou déficit de caixa.")
+elif diferenca < 0:
+    st.error(f"⚠️ **Atenção Ray e Yure:** Faltam **R$ {abs(diferenca):,.2f}** para cobrir todas as pendências deste ciclo.")
+    with st.expander("💡 Diagnóstico do Especialista: O que fazer primeiro?", expanded=False):
+        total_cartoes = df_mes[df_mes["categoria"] == "Cartão de Crédito"]["valor"].sum() if not df_mes.empty else 0.0
+        st.markdown(
+            f"""
+        1. **Sobrevivência e Teto Primeiro**: Garanta imediatamente Moradia (Aluguel: R$ 1.390,00 e Luz/Água: R$ 256,00) e Transporte (R$ 400,00). Sem estabilidade básica, a capacidade de gerar renda é prejudicada.
+        2. **Alerta Crítico em Cartões (Total: R$ {total_cartoes:,.2f})**:
+           - O rotativo de cartões com valores altos possui juros altíssimos.
+           - Se não houver saldo para quitar tudo à vista, **não pague apenas o mínimo**. Ligue nos bancos antes do vencimento e solicite o parcelamento da fatura com taxa fixa pré-fixada.
+        3. **Freio Imediato**: Congele compras parceladas (Shopee, etc.) até a soma dos cartões normalizar.
+        """
+        )
+else:
+    st.success(f"🎉 **Excelente!** O saldo disponível cobre 100% das contas com sobra de **R$ {diferenca:,.2f}**.")
+    with st.expander("🎯 Sugestão para a sobra de caixa:", expanded=False):
+        st.markdown(
+            """
+        - **Reserva de Emergência**: Guarde uma parte em uma aplicação com liquidez diária (100% CDI) para blindar o orçamento de imprevistos.
+        - **Quitação de Cartões Menores**: Antecipe faturas menores para diminuir a quantidade de boletos a acompanhar no próximo mês.
+        """
+        )
 
 st.write("")
 
@@ -516,47 +539,6 @@ with a4:
 st.write("")
 
 # -------------------------------------------------------------
-# ORIENTAÇÕES ESTRATÉGICAS (SEMPRE PRESENTES)
-# -------------------------------------------------------------
-st.subheader("💡 Plano de Ação Financeiro (O Que Fazer)")
-
-total_cartoes = df_mes[df_mes["categoria"] == "Cartão de Crédito"]["valor"].sum() if not df_mes.empty else 0.0
-
-col_or1, col_or2 = st.columns(2)
-
-with col_or1:
-    st.markdown(
-        f"""
-        <div style="background: #FFF5F5; border: 1px solid #FED7D7; border-radius: 12px; padding: 18px;">
-            <h4 style="color: #C53030; margin-top: 0;">🚨 Se Faltar Dinheiro (Plano de Contingência)</h4>
-            <ul style="color: #4A5568; font-size: 0.92rem; line-height: 1.6; padding-left: 20px;">
-                <li><strong>1º Moradia e Transporte Primeiro:</strong> Priorize Aluguel (R$ 1.390), Luz/Água (R$ 256) e Moto (R$ 400). Sem a estrutura básica funcionando, a capacidade de gerar renda é comprometida.</li>
-                <li><strong>2º Cartões de Crédito (Total: R$ {total_cartoes:,.2f}):</strong> Nunca deixe faturas grandes (ex: BB R$ 5.000, Neon R$ 2.134, Brasil Card R$ 1.575) caírem no rotativo padrão. Se faltar dinheiro, acione o parcelamento fixo da fatura no aplicativo antes do vencimento (os juros chegam a ser até 4x menores).</li>
-                <li><strong>3º Freio de Mão em Compras:</strong> Congele novas compras parceladas ou por impulso até que a soma dos cartões baixe do patamar crítico.</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col_or2:
-    st.markdown(
-        """
-        <div style="background: #F0FDF4; border: 1px solid #DCFCE7; border-radius: 12px; padding: 18px;">
-            <h4 style="color: #166534; margin-top: 0;">🎯 Se Sobrar Dinheiro (Plano de Crescimento)</h4>
-            <ul style="color: #4A5568; font-size: 0.92rem; line-height: 1.6; padding-left: 20px;">
-                <li><strong>1º Reserva de Segurança Mínima:</strong> Guarde pelo menos R$ 500 a R$ 1.000 em uma caixinha com liquidez diária (100% CDI) para não precisar recorrer ao cartão em imprevistos.</li>
-                <li><strong>2º Amortização Estratégica:</strong> Use o excedente para liquidar faturas de menor valor de uma vez (como Digio, Recarga Pay ou Dm) para liberar fôlego e reduzir a quantidade de boletos mensais.</li>
-                <li><strong>3º Preparação para Dezembro/Janeiro:</strong> Guarde para os custos extras de final/início de ano (matrículas, IPTU/IPVA ou compras sazonais).</li>
-            </ul>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-st.write("")
-
-# -------------------------------------------------------------
 # GRÁFICOS & DISTRIBUIÇÃO
 # -------------------------------------------------------------
 if not df_mes.empty:
@@ -597,10 +579,10 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA INTERATIVA (COM LIMITE DISPONÍVEL DO CARTÃO)
+# TABELA INTERATIVA (COM LIMITE DISPONÍVEL)
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Edite os dados, preencha o **Limite Disponível** dos cartões e clique no botão abaixo para gravar.")
+st.caption("Altere dados, preencha o **Limite Disponível** dos cartões e clique no botão abaixo para salvar.")
 
 colunas_config = {
     "id": st.column_config.NumberColumn("ID", disabled=True),
