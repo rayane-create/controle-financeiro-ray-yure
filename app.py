@@ -123,6 +123,15 @@ st.markdown(
     .alert-amanha { background: #EFF6FF; border-left: 5px solid #3B82F6; color: #1E40AF; }
     .alert-pagas { background: #ECFDF5; border-left: 5px solid #10B981; color: #065F46; }
 
+    /* Painel de Filtros */
+    .filtro-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 14px 18px 6px 18px;
+        margin-bottom: 15px;
+    }
+
     div[data-testid="stDataEditor"] {
         background: #ffffff;
         border-radius: 12px;
@@ -212,12 +221,12 @@ def load_all_data():
     return df
 
 
-def update_db(df_atualizado, mes_selecionado):
+def update_db_filtered(df_editado_completo, mes_selecionado):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM contas WHERE mes_ano = ?", (mes_selecionado,))
 
-    df_save = df_atualizado.copy()
+    df_save = df_editado_completo.copy()
     df_save["mes_ano"] = mes_selecionado
     df_save["vencimento"] = df_save["vencimento"].astype(str)
 
@@ -594,10 +603,42 @@ if not df_mes.empty:
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # -------------------------------------------------------------
-# TABELA DE CONTAS (COM LINHA VERDE NAS CONTAS PAGAS)
+# TABELA DE CONTAS COM FILTROS EM CADA COLUNA
 # -------------------------------------------------------------
 st.subheader(f"📋 Tabela de Contas - {mes_selecionado}")
-st.caption("Edite os dados, preencha o Limite Disponível e selecione o status. Contas marcadas como **Pago** ficam destacadas em verde.")
+st.caption("Use os filtros abaixo para encontrar despesas específicas por categoria, status, tipo ou descrição.")
+
+# Painel de Filtros Rápidos
+with st.container():
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+
+    with f_col1:
+        opcoes_cat = ["Todas"] + sorted(list(df_mes["categoria"].unique())) if not df_mes.empty else ["Todas"]
+        filtro_tabela_cat = st.selectbox("Filtrar Categoria:", opcoes_cat, key="filtro_tab_cat")
+
+    with f_col2:
+        opcoes_status = ["Todos", "Aguardando Pagamento", "Pago", "Atrasado"]
+        filtro_tabela_status = st.selectbox("Filtrar Status:", opcoes_status, key="filtro_tab_status")
+
+    with f_col3:
+        opcoes_tipo = ["Todos", "Cartão", "Fixo", "Variável", "Emergência"]
+        filtro_tabela_tipo = st.selectbox("Filtrar Tipo:", opcoes_tipo, key="filtro_tab_tipo")
+
+    with f_col4:
+        busca_texto = st.text_input("Buscar por Descrição:", placeholder="Ex: Nubank, Aluguel...", key="filtro_tab_busca")
+
+# Aplicação dos Filtros
+df_tabela_filtrada = df_mes.copy() if not df_mes.empty else pd.DataFrame()
+
+if not df_tabela_filtrada.empty:
+    if filtro_tabela_cat != "Todas":
+        df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["categoria"] == filtro_tabela_cat]
+    if filtro_tabela_status != "Todos":
+        df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["status"] == filtro_tabela_status]
+    if filtro_tabela_tipo != "Todos":
+        df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["tipo"] == filtro_tabela_tipo]
+    if busca_texto.strip():
+        df_tabela_filtrada = df_tabela_filtrada[df_tabela_filtrada["descricao"].str.contains(busca_texto.strip(), case=False, na=False)]
 
 colunas_config = {
     "id": st.column_config.NumberColumn("ID", disabled=True),
@@ -634,17 +675,31 @@ colunas_config = {
     ),
 }
 
-df_editado = st.data_editor(
-    df_mes,
+df_editado_filtrado = st.data_editor(
+    df_tabela_filtrada,
     column_config=colunas_config,
     use_container_width=True,
     num_rows="dynamic",
-    key=f"tabela_{mes_selecionado}",
+    key=f"tabela_{mes_selecionado}_{filtro_tabela_cat}_{filtro_tabela_status}_{filtro_tabela_tipo}_{busca_texto}",
 )
 
 if st.button("💾 Salvar Alterações Deste Mês", type="primary", use_container_width=True):
-    update_db(df_editado, mes_selecionado)
-    st.toast("Contas salvas com sucesso!", icon="✅")
+    # Mescla com segurança o que foi editado no conjunto geral do mês
+    df_final_salvar = df_mes.copy()
+    if not df_editado_filtrado.empty:
+        # Se algum id existente foi atualizado
+        for _, row in df_editado_filtrado.iterrows():
+            if pd.notna(row.get("id")):
+                idx = df_final_salvar[df_final_salvar["id"] == row["id"]].index
+                if len(idx) > 0:
+                    for col in ["descricao", "categoria", "valor", "limite_disponivel", "vencimento", "status", "tipo"]:
+                        df_final_salvar.loc[idx, col] = row[col]
+            else:
+                # Nova linha adicionada na visão filtrada
+                df_final_salvar = pd.concat([df_final_salvar, pd.DataFrame([row])], ignore_index=True)
+                
+    update_db_filtered(df_final_salvar, mes_selecionado)
+    st.toast("Alterações salvas com sucesso no banco de dados!", icon="✅")
     st.rerun()
 
 # Realce visual direto: contas com status "Pago" ficam verdes
@@ -659,7 +714,7 @@ if not df_mes.empty and (df_mes["status"] == "Pago").any():
         "valor": "R$ {:,.2f}",
         "limite_disponivel": "R$ {:,.2f}",
     })
-    st.caption("Visão com destaque verde nas contas que já foram pagas:")
+    st.caption("Visão geral com destaque verde nas contas já liquidadas:")
     st.dataframe(df_pagos_view, use_container_width=True)
 
 # -------------------------------------------------------------
@@ -667,17 +722,16 @@ if not df_mes.empty and (df_mes["status"] == "Pago").any():
 # -------------------------------------------------------------
 st.write("")
 with st.expander("🧮 Calculadora & Simulador de Pagamentos (Clique para simular)", expanded=False):
-    st.markdown("Filtre por categoria e use o botão de **Selecionar Todas** para calcular o valor total rapidamente sem clicar uma a uma.")
+    st.markdown("Filtre por categoria e use a opção de **Selecionar Todas** para calcular o impacto total rapidamente.")
 
     if not df_mes.empty:
         todas_cats = ["Todas"] + sorted(list(df_mes["categoria"].unique()))
-        filtro_cat = st.selectbox("Filtrar por Categoria:", todas_cats)
+        filtro_cat = st.selectbox("Filtrar por Categoria na Simulação:", todas_cats)
 
         df_simulacao = df_mes.copy()
         if filtro_cat != "Todas":
             df_simulacao = df_simulacao[df_simulacao["categoria"] == filtro_cat]
 
-        # Botão/Checkbox para Marcar ou Desmarcar Todas
         c_sel1, c_sel2 = st.columns([1.5, 3])
         with c_sel1:
             marcar_todas = st.checkbox("☑️ Selecionar Todas da Seleção", value=False, key="check_todas")
